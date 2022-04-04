@@ -1,0 +1,14 @@
+#editor  {
+    min-height: 11in;
+    width: 8.5in;
+    margin: 1rem;
+    box-shadow: 0 0 4px 0 gray;
+    margin:auto;
+    margin-top: 1rem;
+}
+
+
+body {
+    margin: 0;
+    text-align: center;
+}
