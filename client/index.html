@@ -7,17 +7,44 @@
 
   <title>Collaborative Doc</title>
 
-  <link href="node_modules/quill/dist/quill.snow.css" rel="stylesheet">
-  <script src="node_modules/quill/dist/quill.js"></script>
-  <link href="styles.css" rel="stylesheet">
-  
 </head>
 
 <body>
 
-    <div id="editor">
+    <div id="menu">
+        <div id="signup">
+            <label> Username</label>
+            <input id="username"> 
+            <label> Password</label>
+            <input id="password"> 
+            <label> Email</label>
+            <input id="email"> 
+            <input onclick="handleSignup()" type="submit" value="Sign Up">
+        </div>
+
+        <div id="login">
+            <label> Username</label> 
+            <input id="username2">
+            <label> Password</label>
+            <input id="password2"> 
+            <input onclick="handleLogin()" type="submit" value="Login">
+        </div>
+
+
+        <input type="button" onclick="location.href='editor.html';" value="Create New Doc" />
+
+        <div id="create-doc">
+            <input id="doc-id"> 
+            <input onclick="handleCreate()" type="submit" value="Open">
+        </div>
+
     </div>
 
+    <ul>
+        List of Docs
+        <li><a href=""></a></li>
+    </ul>
+    
     <script src="index.js"></script>
 </body>
 </html>
