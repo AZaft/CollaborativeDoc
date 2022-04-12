@@ -7,6 +7,7 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: false}));
 
+const PORT = 4000;
 
 //sharedb
 var WebSocket = require('ws');
@@ -18,7 +19,34 @@ sharedb.types.register(richText.type);
 const QuillDeltaToHtmlConverter = require('quill-delta-to-html').QuillDeltaToHtmlConverter;
 
 
-const PORT = 4000;
+//mongodb
+const MongoClient = require('mongodb').MongoClient;
+const url = 'mongodb://127.0.0.1:27017';
+
+let db;
+MongoClient.connect(url, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}, (err, client) => {
+    if (err) {
+        return console.log(err);
+    }
+    db = client.db('CollaborativeDoc');
+    console.log(`MongoDB Connected: ${url}`);
+});
+
+//cookie
+const cookieSession = require('cookie-session');
+app.use(cookieSession({
+  name: 'session',
+  keys: ["key1", "key2"],
+
+  // Cookie Options
+  maxAge: 60 * 60 * 1000 // 1 hour
+}))
+
+
+
 
 app.listen(PORT, () => {
   console.log(`Events service listening at http://localhost:${PORT}`)
@@ -43,6 +71,7 @@ function eventsHandler(request, response, next) {
     response.setHeader('Content-Type', 'text/event-stream');
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Connection', 'keep-alive');
+    response.setHeader("X-Accel-Buffering", "no");
     response.flushHeaders(); 
 
 
@@ -105,5 +134,92 @@ doc.on('op', function(op, source) {
 });
 
 
+app.post('/users/signup', (req, res) => {
+    const users = db.collection('users');
+
+    let user = {
+        name: req.body.username,
+        password: req.body.password,
+        email: req.body.email,
+        disabled: true
+    }
+
+    users.insertOne(user)
+    .then(result => {
+        console.log(result);
+        //use id as verification key here
 
 
+    })
+    .catch(err => {
+        console.log(err);
+        res.send({
+            status: "ERROR"
+        })
+    });
+
+    res.sendStatus(200);
+});
+
+app.post('/users/login', (req, res) => {
+    const users = db.collection('users');
+    users.findOne({email: req.body.email})
+    .then(result => {
+        if(result == null || result.disabled || result.password !== req.body.password){
+            res.send({
+                status: "ERROR"
+            })
+            console.log("Login Failed");
+        } else {
+            let name = result.name;
+            req.session.username = name;
+            res.send({
+              name
+            })
+            console.log("Login Success");
+        }
+        console.log(result);
+    })
+    .catch(err => {
+        res.send({
+            status: "ERROR"
+        })
+        console.log(err);
+    });
+});
+
+app.post('/users/logout', (req, res) => {
+    req.session = null;
+    console.log("Logged out");
+    res.sendStatus(200);
+});
+
+
+app.get('/users/verify', (req, res) => {
+    const users = db.collection('users');
+    users.findOne({name: req.query.user})
+    .then(result => {
+        console.log(result._id.toString());
+        console.log(req.query.key);
+
+        if(result == null  || req.query.key !== result._id.toString() || result.email == null){
+            res.send({
+                status: "ERROR"
+            })
+            console.log("Invalid key");
+        } else {
+            users.updateOne({name: req.query.user}, {$set: {disabled: false}}, {upsert: true})
+                .then(result => {
+                    console.log("Verified");
+                    res.sendStatus(200);
+                });
+        }
+        console.log(result);
+    })
+    .catch(err => {
+        res.send({
+            status: "ERROR"
+        })
+        console.log(err);
+    });
+});

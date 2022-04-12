@@ -5,7 +5,9 @@ const WebSocketJSONStream = require('@teamwork/websocket-json-stream');
 
 ShareDB.types.register(require('rich-text').type);
 
-let shareDbServer = new ShareDB();
+const db = require('sharedb-mongo')('mongodb://localhost:27017/CollaborativeDoc', {mongoOptions: {}});
+
+let shareDbServer = new ShareDB({db});
 
 let connection = shareDbServer.connect();
 
