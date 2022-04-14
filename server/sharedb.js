@@ -11,16 +11,8 @@ let shareDbServer = new ShareDB({db});
 
 let connection = shareDbServer.connect();
 
-let doc = connection.get('docs', 'InitialDoc');
 
-doc.fetch(function (err) {
-  if (err) throw err;
-  if (doc.type === null) {
-    doc.create([], 'rich-text', startWebSocketServer);
-    return;
-  }
-  startWebSocketServer();
-});
+startWebSocketServer();
 
 function startWebSocketServer(){
     let wss = new WebSocket.Server({ port: 8080 });

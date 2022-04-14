@@ -1,4 +1,9 @@
 
+let id;
+let docID;
+let documentID = false;
+let version;
+
 var toolbarOptions = [
   ['bold', 'italic', 'underline', 'strike'],        // toggled buttons
   ['blockquote', 'code-block'],
@@ -26,43 +31,40 @@ var quill = new Quill('#editor', {
     theme: 'snow'
 });
 
-
-
-const id = Date.now();
-const evtSource = new EventSource("http://209.151.151.250:4000/connect/" + id);
-
-evtSource.onmessage = function(event) {
-  let data = JSON.parse(event.data);
-
-  if(data.content) {
-    quill.setContents(data.content);
-  } else {
-    for(let i = 0; i < data.length;i++){
-      quill.updateContents(data[i]);
-    }
-  }
-
-  console.log(data);
-}
-
+connectDoc();
 
 quill.on('text-change', function (delta, oldDelta, source) {
         if (source !== 'user') return;
 
         //array of ops for future buffering
-        let array_of_ops = [];
-        
-        array_of_ops.push( delta.ops );
+
   
-        console.log(array_of_ops);
+        console.log(delta.ops);
 
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", ("http://209.151.151.250:4000/op/" + id), true);
+        xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/doc/op/" + docID + "/" + id), true);
         xhr.setRequestHeader('Content-Type', 'application/json');
 
 
-        xhr.send(JSON.stringify(array_of_ops));
+        xhr.send(JSON.stringify({
+          version: version,
+          op: delta.ops
+        }));
 });
+
+quill.on('selection-change', function(range, oldRange, source) {
+  if (source !== 'user') return;
+  
+  if (!range) return;
+  
+  console.log(range);
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/doc/presence/" + docID + "/" + id), true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+
+  xhr.send(JSON.stringify(range));
+});
+
 
 var toolbar = quill.getModule('toolbar');
 toolbar.addHandler('image', imageHandler);
@@ -84,7 +86,7 @@ function handleSignup(){
     document.getElementById("email").value = "";
 
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://209.151.151.250:4000/users/signup", true);
+    sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/signup", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
         console.log("Signin res: " + this.responseText);
@@ -104,7 +106,7 @@ function handleLogin(){
     document.getElementById("password2").value = "";
 
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://209.151.151.250:4000/users/login", true);
+    sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/login", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
         console.log("Login res: " + this.responseText);
@@ -118,11 +120,84 @@ function handleLogin(){
 
 function handleLogout(){
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://209.151.151.250:4000/users/logout", true);
+    sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/logout", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
         console.log("Signin res: " + this.responseText);
     };
 
     sendUser.send();
+}
+
+function createDoc(){
+  let docName = document.getElementById("doc-name").value;
+  console.log(docName);
+
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/collection/create"), true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+
+  xhr.send(JSON.stringify({
+        "name": docName
+  }));
+}
+
+function deleteDoc(){
+  let docID = document.getElementById("doc-id").value;
+  console.log(docID);
+
+  var xhr = new XMLHttpRequest();
+  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/collection/delete"), true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+
+  xhr.send(JSON.stringify({
+        "docid": docID
+  }));
+}
+
+function openDoc(){
+  let docID = document.getElementById("doc-id-open").value;
+  console.log("Opening: " + docID);
+  localStorage.setItem("documentID", docID);
+  window.location.href = '/doc/edit/' + docID;
+}
+
+function connectDoc(){
+  docID = localStorage.getItem("documentID");
+
+  if(!docID){
+    return;
+  }
+
+  const uID = Date.now();
+  const evtSource = new EventSource("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/doc/connect/" + docID + "/" + uID);
+  id = uID;
+
+  evtSource.onmessage = function(event) {
+    let data = JSON.parse(event.data);
+    console.log(data);
+
+    if(data.error){
+      evtSource.close();
+    } else if(data.presence){
+      console.log(data.presence);
+      if(data.presence.cursor){
+        let id = data.presence.id;
+        let index = data.presence.cursor.index;
+        let length = data.presence.cursor.length;
+        let name = data.presence.cursor.name;
+        colors[id] = colors[id] || tinycolor.random().toHexString();
+        cursors.createCursor(id, name, colors[id]);
+        cursors.moveCursor(id, range);
+      }
+    } else {
+      if(data.content) {
+        version = data.version;
+        quill.setContents(data.content);
+      } else {
+        version++;
+        quill.updateContents(data);
+      }
+    }
+  }
 }

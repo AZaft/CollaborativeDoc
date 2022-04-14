@@ -33,12 +33,22 @@
         <input onclick="handleLogout()" type="submit" value="Logout">
 
 
-
         <input type="button" onclick="location.href='editor.html';" value="Create New Doc" />
 
+        <div id="open-doc">
+            <input id="doc-id-open"> 
+            <input onclick="openDoc()" type="submit" value="Open">
+        </div>
+
+
         <div id="create-doc">
+            <input id="doc-name"> 
+            <input onclick="createDoc()" type="submit" value="Create">
+        </div>
+
+        <div id="delete-doc">
             <input id="doc-id"> 
-            <input onclick="handleCreate()" type="submit" value="Open">
+            <input onclick="deleteDoc()" type="submit" value="Delete">
         </div>
 
     </div>

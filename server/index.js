@@ -2,6 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
+const path = require('path');
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -14,6 +15,7 @@ var WebSocket = require('ws');
 const sharedb = require('sharedb/lib/client');
 const richText = require('rich-text');
 sharedb.types.register(richText.type);
+let doc;
 
 //quill
 const QuillDeltaToHtmlConverter = require('quill-delta-to-html').QuillDeltaToHtmlConverter;
@@ -22,6 +24,7 @@ const QuillDeltaToHtmlConverter = require('quill-delta-to-html').QuillDeltaToHtm
 //mongodb
 const MongoClient = require('mongodb').MongoClient;
 const url = 'mongodb://127.0.0.1:27017';
+const ObjectID = require('mongodb').ObjectID;
 
 let db;
 MongoClient.connect(url, {
@@ -40,12 +43,12 @@ const cookieSession = require('cookie-session');
 app.use(cookieSession({
   name: 'session',
   keys: ["key1", "key2"],
+  secure: false,
+
 
   // Cookie Options
   maxAge: 60 * 60 * 1000 // 1 hour
 }))
-
-
 
 
 app.listen(PORT, () => {
@@ -58,13 +61,9 @@ const connection = new sharedb.Connection(socket);
 
 let currentClientID = 0;
 
-//copy of doc
-const doc = connection.get('docs', 'InitialDoc');
-doc.fetch(function (err) {
-  if (err) throw err;
-});
 
 let clients = [];
+let docs = [];
 //connext to client
 function eventsHandler(request, response, next) {
     response.setHeader('Cache-Control', 'no-cache');
@@ -72,23 +71,58 @@ function eventsHandler(request, response, next) {
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Connection', 'keep-alive');
     response.setHeader("X-Accel-Buffering", "no");
+    response.setHeader("Access-Control-Allow-Credentials", "true");
     response.flushHeaders(); 
 
+    console.log(docs);
+    const clientId = request.params.uid;
+    const docID = request.params.docid;
 
-    const clientId = request.params.id;
 
     const newClient = {
-    id: clientId,
-    response
+        id: clientId,
+        response
     };
 
     clients.push(newClient);
     console.log("New client: " + clientId);
+    console.log("Doc to open: " + docID);
+
+    const doc = connection.get('docs', docID);
+    doc.fetch(function (err) {
+        if (err) throw err;
+    });
+
+    let sendData;
+    if (doc.type === null) {
+        sendData = {
+            error: true,
+            message: "Connection failed: doc does not exist"
+        };
+        const data = `data: ${JSON.stringify(sendData)}\n\n`;
+        response.write(data);
+    } else {
+        sendData = {
+            content: doc.data.ops, 
+            version: doc.version
+        };
+        const data = `data: ${JSON.stringify(sendData)}\n\n`;
+        response.write(data);
+    }
 
 
-    const sendData = {content: doc.data.ops};
-    const data = `data: ${JSON.stringify(sendData)}\n\n`;
-    response.write(data);
+    if(!docs.includes(docID)){
+        doc.on('op', function(op, source) {
+            //send changes to all clients except for client that made them
+            for(let i = 0; i < clients.length;i++){
+                if(clients[i].id !== currentClientID){
+                    console.log("sent");
+                    clients[i].response.write(`data: ${JSON.stringify(op)}\n\n`)
+                }
+            }
+        });
+        docs.push(docID);
+    }
 
     request.on('close', () => {
       console.log(`${clientId} Connection closed`);
@@ -96,41 +130,91 @@ function eventsHandler(request, response, next) {
     });
 }
 
-app.get('/connect/:id', eventsHandler);
+app.get('/doc/connect/:docid/:uid', eventsHandler);
 
-app.post('/op/:id', (req, res) => {
-  currentClientID = req.params.id;
-  console.log(currentClientID);
-  console.log(req.body);
+app.post('/doc/op/:docid/:uid', (req, res) => {
+    console.log("LOGGED IN: " + req.session.username);
 
-  //submit ops to sharedb
-  for(let i = 0; i < req.body.length;i++){
-    doc.submitOp(req.body[i]);
-  }
 
-  res.end();
+    currentClientID = req.params.uid;
+    currentDocID = req.params.docid;
+
+    console.log(currentClientID);
+    console.log(req.body);
+
+    doc = connection.get('docs', currentDocID);
+    doc.fetch(function (err) {
+        if (err) throw err;
+        if(doc.type === null){
+            return res.send({
+                error: true,
+                message: "Doc does not exist for op submission"
+            });
+        }
+    });
+
+    //submit ops to sharedb
+    doc.submitOp(req.body.op);
+    res.end();
 });
 
-app.get('/doc/:id', (req, res) => {
-  let cfg = {};
-  let converter = new QuillDeltaToHtmlConverter(doc.data.ops, cfg);
+app.post('/doc/presence/:docid/:uid', (req, res) => {
+    currentClientID = req.params.uid;
+    currentDocID = req.params.docid;
+    
 
-  let html = converter.convert();
-
-  res.send(html);
-});
-
-doc.on('op', function(op, source) {
-    let array_of_ops = [];
-    array_of_ops.push(op);
-
-    //send changes to all clients except for client that made them
+    console.log(currentClientID);
+    console.log(req.body);
+    let range = req.body;
 
     for(let i = 0; i < clients.length;i++){
-      if(clients[i].id !== currentClientID){
-        clients[i].response.write(`data: ${JSON.stringify(array_of_ops)}\n\n`)
-      }
+        if(clients[i].id !== currentClientID){
+            let index = range.index;
+            let length = range.length;
+            let name = req.session.username;
+            let id = currentDocID;
+            if(name){
+                sendData = {
+                    id,
+                    cursor: {
+                        index,
+                        length,
+                        name
+                    }
+                };
+            } else {
+                sendData = {
+                    currentClientID,
+                    cursor: null
+                };
+            }
+            clients[i].response.write(`data: ${JSON.stringify({presense: sendData})}\n\n`);
+        }
     }
+
+    res.end();
+});
+
+app.get('/doc/get/:docid/:uid', (req, res) => {
+
+    const doc = connection.get('docs', req.params.docid);
+    doc.fetch(function (err) {
+        if (err) throw err;
+    });
+
+    if(doc.type === null){
+        return res.send({
+                error: true,
+                message: "Doc does not for GET"
+        });
+    }
+
+    let cfg = {};
+    let converter = new QuillDeltaToHtmlConverter(doc.data.ops, cfg);
+
+    let html = converter.convert();
+
+    res.send(html);
 });
 
 
@@ -148,13 +232,12 @@ app.post('/users/signup', (req, res) => {
     .then(result => {
         console.log(result);
         //use id as verification key here
-
-
     })
     .catch(err => {
         console.log(err);
         res.send({
-            status: "ERROR"
+            error: true,
+            message: "Signup Failed"
         })
     });
 
@@ -167,12 +250,14 @@ app.post('/users/login', (req, res) => {
     .then(result => {
         if(result == null || result.disabled || result.password !== req.body.password){
             res.send({
-                status: "ERROR"
+                error: true,
+                message: "Invalid Login"
             })
             console.log("Login Failed");
         } else {
             let name = result.name;
             req.session.username = name;
+
             res.send({
               name
             })
@@ -182,7 +267,8 @@ app.post('/users/login', (req, res) => {
     })
     .catch(err => {
         res.send({
-            status: "ERROR"
+            error: true,
+            message: "Login failed"
         })
         console.log(err);
     });
@@ -204,7 +290,8 @@ app.get('/users/verify', (req, res) => {
 
         if(result == null  || req.query.key !== result._id.toString() || result.email == null){
             res.send({
-                status: "ERROR"
+                error: true,
+                message: "Invalid Verification"
             })
             console.log("Invalid key");
         } else {
@@ -218,8 +305,69 @@ app.get('/users/verify', (req, res) => {
     })
     .catch(err => {
         res.send({
-            status: "ERROR"
+            error: true,
+            message: "Invalid Verification"
         })
         console.log(err);
     });
+});
+
+app.post('/collection/create', (req, res) => {
+    let docName = req.body.name;
+    console.log(docName);
+
+    const docID = Date.now();
+
+    const doc = connection.get('docs', docID.toString());
+    doc.fetch(function (err) {
+        if (err) throw err;
+        if (doc.type === null) {
+            doc.create([], 'rich-text');
+            return;
+        }
+    });
+
+    res.send({
+        docID
+    })
+});
+
+app.post('/collection/delete', (req, res) => {
+    let docID = req.body.docid;
+    console.log(docID);
+
+    const doc = connection.get('docs', docID);
+    doc.fetch(function (err) {
+        if (err) throw err;
+    });
+
+    doc.destroy();
+
+    const docs = db.collection('docs');
+    docs.deleteMany({ _id : docID })
+    .then(result => {
+        console.log(result);
+    })
+    .catch(err => {
+        console.log(err);
+        res.send({
+            error: true,
+            message: "Delete Failed"
+        })
+    });
+
+    const o_docs = db.collection('o_docs');
+    o_docs.deleteMany({ d : docID })
+    .then(result => {
+        console.log(result);
+    })
+    .catch(err => {
+        console.log(err);
+        return res.send({
+            error: true,
+            message: "Delete Failed"
+        });
+    });
+
+    res.sendStatus(200);
 });
