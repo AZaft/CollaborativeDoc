@@ -3,10 +3,45 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
 const path = require('path');
+const multer  = require('multer')
+const nodemailer = require("nodemailer");
+const cookieParser = require('cookie-parser')
+
+const valid_images = [
+  'image/png',
+  'image/jpeg',
+]
+
+let transporter = nodemailer.createTransport({
+    host: "localhost",
+    port: 25,
+    secure: false, 
+    tls: {
+          rejectUnauthorized: false
+    }
+});
+
+var upload = multer({
+  storage: multer.diskStorage({
+    destination: './media',
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname)) //Appending extension
+    }
+  }),
+  fileFilter: (req, file, cb) => {
+    if (!valid_images.includes(file.mimetype)) {
+      return cb(new Error('file is not allowed'))
+    }
+
+    cb(null, true)
+  }
+}).single('file');
+
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: false}));
+app.use(cookieParser());
 
 const PORT = 4000;
 
@@ -16,6 +51,8 @@ const sharedb = require('sharedb/lib/client');
 const richText = require('rich-text');
 sharedb.types.register(richText.type);
 let doc;
+let docNames = {}
+let versionNumbers = [];
 
 //quill
 const QuillDeltaToHtmlConverter = require('quill-delta-to-html').QuillDeltaToHtmlConverter;
@@ -45,7 +82,6 @@ app.use(cookieSession({
   keys: ["key1", "key2"],
   secure: false,
 
-
   // Cookie Options
   maxAge: 60 * 60 * 1000 // 1 hour
 }))
@@ -66,12 +102,15 @@ let clients = [];
 let docs = [];
 //connext to client
 function eventsHandler(request, response, next) {
+    if(request.cookies.username ===  undefined){
+        
+    }
+
     response.setHeader('Cache-Control', 'no-cache');
     response.setHeader('Content-Type', 'text/event-stream');
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Connection', 'keep-alive');
     response.setHeader("X-Accel-Buffering", "no");
-    response.setHeader("Access-Control-Allow-Credentials", "true");
     response.flushHeaders(); 
 
     console.log(docs);
@@ -104,7 +143,7 @@ function eventsHandler(request, response, next) {
     } else {
         sendData = {
             content: doc.data.ops, 
-            version: doc.version
+            version: versionNumbers[docID]
         };
         const data = `data: ${JSON.stringify(sendData)}\n\n`;
         response.write(data);
@@ -116,8 +155,9 @@ function eventsHandler(request, response, next) {
             //send changes to all clients except for client that made them
             for(let i = 0; i < clients.length;i++){
                 if(clients[i].id !== currentClientID){
-                    console.log("sent");
                     clients[i].response.write(`data: ${JSON.stringify(op)}\n\n`)
+                } else {
+                    clients[i].response.write(`data: ${JSON.stringify({ack: op})}\n\n`)
                 }
             }
         });
@@ -133,18 +173,19 @@ function eventsHandler(request, response, next) {
 app.get('/doc/connect/:docid/:uid', eventsHandler);
 
 app.post('/doc/op/:docid/:uid', (req, res) => {
-    console.log("LOGGED IN: " + req.session.username);
+    //console.log("LOGGED IN: " + req.cookies.username);
 
 
     currentClientID = req.params.uid;
     currentDocID = req.params.docid;
 
     console.log(currentClientID);
-    console.log(req.body);
+    //console.log(req.body);
 
     doc = connection.get('docs', currentDocID);
     doc.fetch(function (err) {
         if (err) throw err;
+
         if(doc.type === null){
             return res.send({
                 error: true,
@@ -153,9 +194,25 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
         }
     });
 
-    //submit ops to sharedb
-    doc.submitOp(req.body.op);
-    res.end();
+
+    
+
+    let versionNumber = versionNumbers[currentDocID];
+    if(!versionNumber){
+        versionNumbers[currentDocID] = 1;
+    }
+
+    console.log(versionNumber);
+    if(versionNumber === req.body.version){
+    
+        //submit ops to sharedb
+        doc.submitOp(req.body.op);
+        versionNumbers[currentDocID]++;
+
+        return res.send({status: "ok"});
+    } else {
+        return res.send({status: 'retry'});
+    }
 });
 
 app.post('/doc/presence/:docid/:uid', (req, res) => {
@@ -171,32 +228,32 @@ app.post('/doc/presence/:docid/:uid', (req, res) => {
         if(clients[i].id !== currentClientID){
             let index = range.index;
             let length = range.length;
-            let name = req.session.username;
-            let id = currentDocID;
+            let name = req.cookies.username;
+            let id = currentClientID;
             if(name){
-                sendData = {
+                sendData = {presence: {
                     id,
                     cursor: {
                         index,
                         length,
                         name
                     }
-                };
+                }};
             } else {
-                sendData = {
-                    currentClientID,
+                sendData = {presence : {
+                    id,
                     cursor: null
-                };
+                }};
             }
-            clients[i].response.write(`data: ${JSON.stringify({presense: sendData})}\n\n`);
+            //let data = {presence: sendData}
+            console.log(sendData);
+            clients[i].response.write(`data: ${JSON.stringify(sendData)}\n\n`);
         }
     }
-
-    res.end();
+    return res.send({status: "ok"});
 });
 
 app.get('/doc/get/:docid/:uid', (req, res) => {
-
     const doc = connection.get('docs', req.params.docid);
     doc.fetch(function (err) {
         if (err) throw err;
@@ -222,7 +279,7 @@ app.post('/users/signup', (req, res) => {
     const users = db.collection('users');
 
     let user = {
-        name: req.body.username,
+        name: req.body.name,
         password: req.body.password,
         email: req.body.email,
         disabled: true
@@ -230,8 +287,15 @@ app.post('/users/signup', (req, res) => {
 
     users.insertOne(user)
     .then(result => {
-        console.log(result);
-        //use id as verification key here
+        let verifyLink = "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
+        console.log(verifyLink);
+
+        transporter.sendMail({
+            to: user.email,
+            from: '"CollaborativeDoc" <root@ubuntu-1cpu-1gb-us-nyc1>', // Make sure you don't forget the < > brackets
+            subject: "Verify Account",
+            text: verifyLink
+        })
     })
     .catch(err => {
         console.log(err);
@@ -241,22 +305,27 @@ app.post('/users/signup', (req, res) => {
         })
     });
 
-    res.sendStatus(200);
+    return res.send({status: "ok"});
 });
 
 app.post('/users/login', (req, res) => {
     const users = db.collection('users');
     users.findOne({email: req.body.email})
     .then(result => {
-        if(result == null || result.disabled || result.password !== req.body.password){
+        if(result === null || result.disabled || result.password !== req.body.password){
             res.send({
                 error: true,
                 message: "Invalid Login"
             })
+            console.log("ACTUAL:")
+            console.log(result);
+            console.log("GOT:")
+            console.log(req.body);
             console.log("Login Failed");
         } else {
             let name = result.name;
-            req.session.username = name;
+            
+            res.cookie('username',name, { maxAge: 900000, httpOnly: true });
 
             res.send({
               name
@@ -275,15 +344,16 @@ app.post('/users/login', (req, res) => {
 });
 
 app.post('/users/logout', (req, res) => {
-    req.session = null;
+    res.clearCookie("username");
     console.log("Logged out");
-    res.sendStatus(200);
+    return res.send({status: "ok"});
 });
 
 
 app.get('/users/verify', (req, res) => {
     const users = db.collection('users');
-    users.findOne({name: req.query.user})
+    console.log(req.query.user);
+    users.findOne({email: req.query.user})
     .then(result => {
         console.log(result._id.toString());
         console.log(req.query.key);
@@ -295,10 +365,10 @@ app.get('/users/verify', (req, res) => {
             })
             console.log("Invalid key");
         } else {
-            users.updateOne({name: req.query.user}, {$set: {disabled: false}}, {upsert: true})
+            users.updateOne({email: req.query.user}, {$set: {disabled: false}}, {upsert: true})
                 .then(result => {
                     console.log("Verified");
-                    res.sendStatus(200);
+                    return res.send({status: "ok"});
                 });
         }
         console.log(result);
@@ -313,8 +383,15 @@ app.get('/users/verify', (req, res) => {
 });
 
 app.post('/collection/create', (req, res) => {
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+
     let docName = req.body.name;
-    console.log(docName);
+    console.log("CREATING: " + docName);
 
     const docID = Date.now();
 
@@ -327,12 +404,41 @@ app.post('/collection/create', (req, res) => {
         }
     });
 
+    docNames[docID] = docName;
+    versionNumbers[docID] = 1;
+    
     res.send({
-        docID
+        docid: docID
     })
 });
 
+// function createNamePair(docID, docName){
+//     const names = db.collection('docNames');
+//     let pair = {
+//         name: docName,
+//         id: docID
+//     }
+//     names.insertOne(pair)
+//     .then(result => {
+//         console.log(result);
+//     })
+//     .catch(err => {
+//         console.log(err);
+//         res.send({
+//             error: true,
+//             message: "Creation Failed"
+//         })
+//     });
+// }
+
 app.post('/collection/delete', (req, res) => {
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+
     let docID = req.body.docid;
     console.log(docID);
 
@@ -369,5 +475,66 @@ app.post('/collection/delete', (req, res) => {
         });
     });
 
-    res.sendStatus(200);
+    return res.send({status: "ok"});
 });
+
+
+app.post('/media/upload',  function (req, res, next) {
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+
+    upload(req, res, function (err) {
+        console.log(req);
+        if (err) {
+            return res.send({
+                    error: true,
+                    message: "Only png and jpeg allowed!"
+            });
+        }  else {
+            return res.send({
+                mediaid: req.file.filename
+            });
+        }
+    })
+})
+
+app.get('/media/access/:mediaid',  function (req, res, next) {
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+    res.sendFile("/var/www/attemptfarmer.cse356.compas.cs.stonybrook.edu/CollaborativeDoc/server/media/" + req.params.mediaid);
+})
+
+app.get("/collection/list", (req, res) => { 
+    
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+
+    const docs = db.collection('docs');
+
+    docs.find().sort({ "_m.mtime": -1}).limit(10).toArray(function(err, result) {
+        if (err) throw err;
+    
+        console.log("10 RECENT: ");
+        console.log(result);
+
+        let docpairs = []
+        for(let i = 0; i < result.length;i++){
+            let id = result[i]._id;
+            let name = docNames[result[i]._id];
+            docpairs.push({id, name});
+        }
+        res.send(docpairs);
+    });
+})
