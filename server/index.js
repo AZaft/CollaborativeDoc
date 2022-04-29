@@ -7,9 +7,17 @@ const multer  = require('multer')
 const nodemailer = require("nodemailer");
 const cookieParser = require('cookie-parser')
 
+//elastic search
+const { Client } = require('@elastic/elasticsearch')
+const client = new Client({
+  node: 'http://localhost:9200'
+})
+
 const valid_images = [
   'image/png',
   'image/jpeg',
+  'image/jpg',
+  'image/gif'
 ]
 
 let transporter = nodemailer.createTransport({
@@ -34,13 +42,13 @@ var upload = multer({
     }
 
     cb(null, true)
-  }
+  },
 }).single('file');
 
 
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended: false}));
+app.use(bodyParser.json({limit: '10mb'}));
+app.use(bodyParser.urlencoded({limit: '10mb', extended: false}));
 app.use(cookieParser());
 
 const PORT = 4000;
@@ -51,12 +59,11 @@ const sharedb = require('sharedb/lib/client');
 const richText = require('rich-text');
 sharedb.types.register(richText.type);
 let doc;
-let docNames = {}
-let versionNumbers = [];
+let docNames = {};
+let doc_versions = {};
 
 //quill
 const QuillDeltaToHtmlConverter = require('quill-delta-to-html').QuillDeltaToHtmlConverter;
-
 
 //mongodb
 const MongoClient = require('mongodb').MongoClient;
@@ -75,17 +82,6 @@ MongoClient.connect(url, {
     console.log(`MongoDB Connected: ${url}`);
 });
 
-//cookie
-const cookieSession = require('cookie-session');
-app.use(cookieSession({
-  name: 'session',
-  keys: ["key1", "key2"],
-  secure: false,
-
-  // Cookie Options
-  maxAge: 60 * 60 * 1000 // 1 hour
-}))
-
 
 app.listen(PORT, () => {
   console.log(`Events service listening at http://localhost:${PORT}`)
@@ -98,22 +94,20 @@ const connection = new sharedb.Connection(socket);
 let currentClientID = 0;
 
 
-let clients = [];
-let docs = [];
+let clients = {};
+let docs_to_index = {};
+
 //connext to client
 function eventsHandler(request, response, next) {
-    if(request.cookies.username ===  undefined){
-        
-    }
 
-    response.setHeader('Cache-Control', 'no-cache');
-    response.setHeader('Content-Type', 'text/event-stream');
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Connection', 'keep-alive');
-    response.setHeader("X-Accel-Buffering", "no");
-    response.flushHeaders(); 
+    const headers = {
+        'Content-Type': 'text/event-stream',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Cache-Control': 'no-cache'
+    };
+    response.writeHead(200, headers);
 
-    console.log(docs);
     const clientId = request.params.uid;
     const docID = request.params.docid;
 
@@ -123,7 +117,11 @@ function eventsHandler(request, response, next) {
         response
     };
 
-    clients.push(newClient);
+    if(!clients[docID]){
+        clients[docID] = [];
+    }
+
+    clients[docID].push(newClient);
     console.log("New client: " + clientId);
     console.log("Doc to open: " + docID);
 
@@ -141,45 +139,43 @@ function eventsHandler(request, response, next) {
         const data = `data: ${JSON.stringify(sendData)}\n\n`;
         response.write(data);
     } else {
+
         sendData = {
             content: doc.data.ops, 
-            version: versionNumbers[docID]
+            version: doc_versions[docID]
         };
+
         const data = `data: ${JSON.stringify(sendData)}\n\n`;
         response.write(data);
     }
 
-
-    if(!docs.includes(docID)){
-        doc.on('op', function(op, source) {
-            //send changes to all clients except for client that made them
-            for(let i = 0; i < clients.length;i++){
-                if(clients[i].id !== currentClientID){
-                    clients[i].response.write(`data: ${JSON.stringify(op)}\n\n`)
-                } else {
-                    clients[i].response.write(`data: ${JSON.stringify({ack: op})}\n\n`)
-                }
-            }
-        });
-        docs.push(docID);
-    }
+    //console.log(clients);
 
     request.on('close', () => {
       console.log(`${clientId} Connection closed`);
-      clients = clients.filter(client => client.id !== clientId);
+      clients[docID] = clients[docID].filter(client => client.id !== clientId);
     });
 }
 
 app.get('/doc/connect/:docid/:uid', eventsHandler);
 
 app.post('/doc/op/:docid/:uid', (req, res) => {
-    //console.log("LOGGED IN: " + req.cookies.username);
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
 
+    //console.log("LOGGED IN: " + req.cookies.username);
 
     currentClientID = req.params.uid;
     currentDocID = req.params.docid;
+    client_version = req.body.version;
+    server_version = doc_versions[currentDocID];
+    op = req.body.op;
 
-    console.log(currentClientID);
+    //console.log(currentClientID);
     //console.log(req.body);
 
     doc = connection.get('docs', currentDocID);
@@ -194,38 +190,53 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
         }
     });
 
+    //console.log("client: " + client_version);
+    //console.log("server: " + server_version);
 
-    
-
-    let versionNumber = versionNumbers[currentDocID];
-    if(!versionNumber){
-        versionNumbers[currentDocID] = 1;
-    }
-
-    console.log(versionNumber);
-    if(versionNumber === req.body.version){
-    
+    if(server_version === client_version){
         //submit ops to sharedb
-        doc.submitOp(req.body.op);
-        versionNumbers[currentDocID]++;
-
+        doc.submitOp(op, sendOps(currentDocID, op));
+    
+        //index doc every 50 ops
+        
+        docs_to_index[currentDocID] = doc.data.ops;
+        
         return res.send({status: "ok"});
+
     } else {
         return res.send({status: 'retry'});
     }
 });
 
+function sendOps(docID, op, version){
+    doc_versions[docID]++;
+
+    for(let i = 0; i < clients[docID].length;i++){
+        if(clients[docID][i].id !== currentClientID){
+            clients[docID][i].response.write(`data: ${JSON.stringify(op)}\n\n`)
+        } else {
+            clients[docID][i].response.write(`data: ${JSON.stringify({ack: op})}\n\n`)
+        }
+    }
+}
+
 app.post('/doc/presence/:docid/:uid', (req, res) => {
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+
     currentClientID = req.params.uid;
     currentDocID = req.params.docid;
     
-
     console.log(currentClientID);
     console.log(req.body);
     let range = req.body;
 
-    for(let i = 0; i < clients.length;i++){
-        if(clients[i].id !== currentClientID){
+    for(let i = 0; i < clients[currentDocID].length;i++){
+        if(clients[currentDocID][i].id !== currentClientID){
             let index = range.index;
             let length = range.length;
             let name = req.cookies.username;
@@ -247,13 +258,20 @@ app.post('/doc/presence/:docid/:uid', (req, res) => {
             }
             //let data = {presence: sendData}
             console.log(sendData);
-            clients[i].response.write(`data: ${JSON.stringify(sendData)}\n\n`);
+            clients[currentDocID][i].response.write(`data: ${JSON.stringify(sendData)}\n\n`);
         }
     }
     return res.send({status: "ok"});
 });
 
 app.get('/doc/get/:docid/:uid', (req, res) => {
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
+
     const doc = connection.get('docs', req.params.docid);
     doc.fetch(function (err) {
         if (err) throw err;
@@ -391,9 +409,10 @@ app.post('/collection/create', (req, res) => {
     }
 
     let docName = req.body.name;
-    console.log("CREATING: " + docName);
+    
 
     const docID = Date.now();
+    console.log("CREATING: " + docName + docID);
 
     const doc = connection.get('docs', docID.toString());
     doc.fetch(function (err) {
@@ -405,8 +424,8 @@ app.post('/collection/create', (req, res) => {
     });
 
     docNames[docID] = docName;
-    versionNumbers[docID] = 1;
-    
+    doc_versions[docID] = 1;
+
     res.send({
         docid: docID
     })
@@ -488,8 +507,8 @@ app.post('/media/upload',  function (req, res, next) {
     }
 
     upload(req, res, function (err) {
-        console.log(req);
         if (err) {
+            console.log(err);
             return res.send({
                     error: true,
                     message: "Only png and jpeg allowed!"
@@ -514,12 +533,12 @@ app.get('/media/access/:mediaid',  function (req, res, next) {
 
 app.get("/collection/list", (req, res) => { 
     
-    if(req.cookies.username ===  undefined){
-        return res.send({
-            error: true,
-            message: "Not logged in!"
-        });
-    }
+    // if(req.cookies.username ===  undefined){
+    //     return res.send({
+    //         error: true,
+    //         message: "Not logged in!"
+    //     });
+    // }
 
     const docs = db.collection('docs');
 
@@ -538,3 +557,109 @@ app.get("/collection/list", (req, res) => {
         res.send(docpairs);
     });
 })
+
+app.get("/index/suggest", async (req, res) => { 
+    
+    // if(req.cookies.username ===  undefined){
+    //     return res.send({
+    //         error: true,
+    //         message: "Not logged in!"
+    //     });
+    // }
+
+    const result = await client.search({
+        index: 'docs',
+        size: 1,
+        query : {
+            prefix: {
+                content: req.query.q
+            }
+        }
+    })
+
+    if(result.hits.total.value > 0){
+        let content = result.hits.hits[0]._source.content;
+
+        if(content){
+            let temp = content.substring(content.indexOf(req.query.q));
+            let term = temp.substring(0, temp.indexOf(" "));
+            return res.send([term]);
+        }
+        return res.send([]);
+    }
+    return res.send([]);
+})
+
+app.get("/index/search",  async (req, res) => { 
+    
+    // if(req.cookies.username ===  undefined){
+    //     return res.send({
+    //         error: true,
+    //         message: "Not logged in!"
+    //     });
+    // }
+
+    console.log(req.query.q)
+
+    const result = await client.search({
+        index: 'docs',
+        size: 10,
+        query: {
+            query_string: {
+                query: req.query.q
+            }
+        },
+        highlight:{
+            fragment_size: 50,
+            fields: {
+                content: {}
+            }
+        }
+    })
+
+    let numHits = result.hits.total.value;
+
+    let docs = [];
+
+    for(let i = 0; i < numHits;i++){
+        let hit = result.hits.hits[i];
+        if(hit){
+            docs.push({
+                docid: hit._id,
+                name: hit._source.title,
+                snippet: hit.highlight.content[0]
+            });
+        }   
+    }
+
+    return res.send(docs);
+})
+
+async function addIndex(docID, ops){
+    let text = "";
+    for(let i = 0; i < ops.length;i++){
+        let op = ops[i];
+        if(op.insert){
+            text += op.insert + " ";
+        }
+    }
+    await client.update({
+        index: 'docs',
+        id: docID,
+        doc_as_upsert: true,
+        doc: {
+            title: docNames[docID],
+            content: text
+        }
+    });
+}
+
+function addIndexInterval(){
+    let key = Object.keys(docs_to_index)[0];
+
+    if(key) addIndex(key, docs_to_index[key]);
+
+    delete docs_to_index[key];
+}
+
+var cancel = setInterval(addIndexInterval, 4000);
