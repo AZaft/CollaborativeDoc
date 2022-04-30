@@ -52,8 +52,6 @@ quill.on('text-change', function (delta, oldDelta, source) {
         
         sendOp(delta.ops);
         ack = false;
-        
-        
 });
 
 function sendOp(ops){
@@ -64,7 +62,6 @@ function sendOp(ops){
   xhr.onload = function(){
     if(this.responseText == "{status: 'retry'}"){
       console.log("retrying");
-      version++;
       sendOp(ops);
     }
   };
@@ -115,7 +112,7 @@ function handleSignup(){
         console.log("Signin res: " + this.responseText);
     };
     sendUser.send(JSON.stringify({
-        "username": username,
+        "name": username,
         "password": password,
         "email": email,
         "disabled": true
@@ -125,8 +122,8 @@ function handleSignup(){
 function handleLogin(){
     let email = document.getElementById("email2").value;
     let password = document.getElementById("password2").value;
-    document.getElementById("email2").value = "";
-    document.getElementById("password2").value = "";
+    // document.getElementById("email2").value = "";
+    // document.getElementById("password2").value = "";
 
     var sendUser = new XMLHttpRequest();
     sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/login", true);

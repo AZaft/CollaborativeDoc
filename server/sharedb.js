@@ -23,4 +23,3 @@ function startWebSocketServer(){
         console.log('Listening on http://localhost:8080');
     });
 }
-
