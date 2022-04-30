@@ -63,7 +63,7 @@ app.post('/users/signup', (req, res) => {
     users.insertOne(user)
     .then(result => {
         let verifyLink = "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
-        console.log(verifyLink);
+        //console.log(verifyLink);
 
         transporter.sendMail({
             to: user.email,
@@ -92,11 +92,11 @@ app.post('/users/login', (req, res) => {
                 error: true,
                 message: "Invalid Login"
             })
-            console.log("ACTUAL:")
-            console.log(result);
-            console.log("GOT:")
-            console.log(req.body);
-            console.log("Login Failed");
+            // console.log("ACTUAL:")
+            // console.log(result);
+            // console.log("GOT:")
+            // console.log(req.body);
+            // console.log("Login Failed");
         } else {
             let name = result.name;
             
@@ -105,9 +105,9 @@ app.post('/users/login', (req, res) => {
             res.send({
               name
             })
-            console.log("Login Success");
+            //console.log("Login Success");
         }
-        console.log(result);
+        //console.log(result);
     })
     .catch(err => {
         res.send({
@@ -127,26 +127,26 @@ app.post('/users/logout', (req, res) => {
 
 app.get('/users/verify', (req, res) => {
     const users = db.collection('users');
-    console.log(req.query.user);
+    //console.log(req.query.user);
     users.findOne({email: req.query.user})
     .then(result => {
-        console.log(result._id.toString());
-        console.log(req.query.key);
+        //console.log(result._id.toString());
+        //console.log(req.query.key);
 
         if(result == null  || req.query.key !== result._id.toString() || result.email == null){
             res.send({
                 error: true,
                 message: "Invalid Verification"
             })
-            console.log("Invalid key");
+            //console.log("Invalid key");
         } else {
             users.updateOne({email: req.query.user}, {$set: {disabled: false}}, {upsert: true})
                 .then(result => {
-                    console.log("Verified");
+                    //console.log("Verified");
                     return res.send({status: "ok"});
                 });
         }
-        console.log(result);
+        //console.log(result);
     })
     .catch(err => {
         res.send({

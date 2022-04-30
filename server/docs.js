@@ -5,7 +5,6 @@ const cors = require('cors');
 const app = express();
 const path = require('path');
 const cookieParser = require('cookie-parser');
-const cron = require('node-cron');
 
 app.use(cors());
 app.use(bodyParser.json({limit: '10mb'}));
@@ -14,13 +13,25 @@ app.use(cookieParser());
 
 const PORT = 4000;
 
+
+const redis = require('redis');
+const redis_client = redis.createClient({
+    host: '127.0.0.1',
+    port: '6379',
+});
+
+(async () => {
+  await redis_client.connect();
+})();
+
+
+
 //sharedb
 var WebSocket = require('ws');
 const sharedb = require('sharedb/lib/client');
 const richText = require('rich-text');
 sharedb.types.register(richText.type);
 let doc;
-let docNames = {};
 let doc_versions = {};
 
 //quill
@@ -53,8 +64,6 @@ const socket = new WebSocket('ws://localhost:8080');
 const connection = new sharedb.Connection(socket);
 
 let currentClientID = 0;
-
-
 let clients = {};
 
 //connext to client
@@ -82,8 +91,8 @@ function eventsHandler(request, response, next) {
     }
 
     clients[docID].push(newClient);
-    console.log("New client: " + clientId);
-    console.log("Doc to open: " + docID);
+    //console.log("New client: " + clientId);
+    //console.log("Doc to open: " + docID);
 
     const doc = connection.get('docs', docID);
     doc.fetch(function (err) {
@@ -189,8 +198,8 @@ app.post('/doc/presence/:docid/:uid', (req, res) => {
     currentClientID = req.params.uid;
     currentDocID = req.params.docid;
     
-    console.log(currentClientID);
-    console.log(req.body);
+    // console.log(currentClientID);
+    // console.log(req.body);
     let range = req.body;
 
     for(let i = 0; i < clients[currentDocID].length;i++){
@@ -215,7 +224,7 @@ app.post('/doc/presence/:docid/:uid', (req, res) => {
                 }};
             }
             //let data = {presence: sendData}
-            console.log(sendData);
+            //console.log(sendData);
             clients[currentDocID][i].response.write(`data: ${JSON.stringify(sendData)}\n\n`);
         }
     }
@@ -264,7 +273,7 @@ app.post('/collection/create', (req, res) => {
     
 
     const docID = Date.now();
-    console.log("CREATING: " + docName + docID);
+    //console.log("CREATING: " + docName + docID);
 
     const doc = connection.get('docs', docID.toString());
     doc.fetch(function (err) {
@@ -275,13 +284,14 @@ app.post('/collection/create', (req, res) => {
         }
     });
 
-    docNames[docID] = docName;
+    redis_client.set(docID, docName);
     doc_versions[docID] = 1;
 
     res.send({
         docid: `${docID}`
     })
 });
+
 
 // function createNamePair(docID, docName){
 //     const names = db.collection('docNames');
@@ -311,7 +321,7 @@ app.post('/collection/delete', (req, res) => {
     }
 
     let docID = req.body.docid;
-    console.log(docID);
+    //console.log(docID);
 
     const doc = connection.get('docs', docID);
     doc.fetch(function (err) {
@@ -348,3 +358,30 @@ app.post('/collection/delete', (req, res) => {
 
     return res.send({status: "ok"});
 });
+
+app.get("/collection/list", (req, res) => { 
+    
+    // if(req.cookies.username ===  undefined){
+    //     return res.send({
+    //         error: true,
+    //         message: "Not logged in!"
+    //     });
+    // }
+
+    const docs = db.collection('docs');
+
+    docs.find().sort({ "_m.mtime": -1}).limit(10).toArray( async function(err, result) {
+        if (err) throw err;
+    
+        // console.log("10 RECENT: ");
+        // console.log(result);
+
+        let docpairs = []
+        for(let i = 0; i < result.length;i++){
+            let id = result[i]._id;
+            let name = await redis_client.get(result[i]._id);
+            docpairs.push({id, name});
+        }
+        res.send(docpairs);
+    });
+})

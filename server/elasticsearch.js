@@ -7,10 +7,22 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
 
+//Redis
+const redis = require('redis');
+const redis_client = redis.createClient({
+    host: '127.0.0.1',
+    port: '6379',
+});
+
+(async () => {
+  await redis_client.connect();
+})();
+
+//elastic search
 //elastic search
 const { Client } = require('@elastic/elasticsearch')
 const client = new Client({
-  node: 'http://209.94.59.203:9200'
+  node: 'http://209.94.59.29:9200'
 })
 
 
@@ -30,11 +42,11 @@ let db;
 MongoClient.connect(url, {
     useNewUrlParser: true,
     useUnifiedTopology: true
-}, (err, client) => {
+}, (err, mclient) => {
     if (err) {
         return console.log(err);
     }
-    db = client.db('CollaborativeDoc');
+    db = mclient.db('CollaborativeDoc');
     console.log(`MongoDB Connected: ${url}`);
 });
 
@@ -50,8 +62,7 @@ app.get("/index/suggest", async (req, res) => {
     //         message: "Not logged in!"
     //     });
     // }
-    await client.indices.refresh({ index: 'docs' })
-
+    
     const result = await client.search({
         index: 'docs',
         size: 1,
@@ -68,7 +79,9 @@ app.get("/index/suggest", async (req, res) => {
         if(content){
             let temp = content.substring(content.indexOf(req.query.q));
             let term = temp.substring(0, temp.indexOf(" "));
-            return res.send([term]);
+
+            //console.log(term);
+            return res.status(200).json([term]);
         }
         return res.send([]);
     }
@@ -83,20 +96,21 @@ app.get("/index/search",  async (req, res) => {
     //         message: "Not logged in!"
     //     });
     // }
-    await client.indices.refresh({ index: 'docs' })
-
+    
     console.log(req.query.q)
 
     const result = await client.search({
         index: 'docs',
         size: 10,
-        query: {
-            query_string: {
-                query: req.query.q
+        query : {
+            match_phrase: {
+                content: {
+                    query: req.query.q
+                }
             }
         },
         highlight:{
-            fragment_size: 200,
+            fragment_size: 150,
             fields: {
                 content: {}
             }
@@ -118,7 +132,8 @@ app.get("/index/search",  async (req, res) => {
         }   
     }
 
-    return res.send(docs);
+    //console.log(docs[0]);
+    return res.status(200).json(docs);
 })
 
 async function addIndex(docID, ops){
@@ -133,30 +148,32 @@ async function addIndex(docID, ops){
         }
     }
 
+    let name = await redis_client.get(docID);
+
     await client.index({
         index: 'docs',
         id: docID,
         document: {
-            title: " ",
+            title: name,
             content: text
         }
     });
 }
 
-cron.schedule('*/12 * * * * * *', () => {
-    updateDocs();
+
+cron.schedule('*/10 * * * * * *', () => {
+    db.collection('docs').find().toArray( async function(err, result) {
+        for(let i = 0; i < result.length;i++){
+            let doc = result[i];
+            let ops = doc.ops;
+
+            if(ops !== undefined && ops.length != 0){
+                let modifiedtime = (Date.now() - doc._m.mtime) / 1000;
+                if(modifiedtime < 10){
+                    let id = doc._id;
+                    addIndex(id, ops);
+                }
+            } 
+        }
+    });
 });
-
-async function updateDocs() {
-    const data = await db.collection('docs').find().toArray();
-    for(let i = 0; i < data.length;i++){
-        let doc = data[i];
-        let id = doc._id;
-        let ops = doc.ops;
-
-        if(ops !== undefined && ops.length != 0){
-            addIndex(id, ops);
-        } 
-    }
-}
-
