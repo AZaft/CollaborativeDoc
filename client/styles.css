@@ -7,6 +7,17 @@
     margin-top: 1rem;
 }
 
+.hide-form{
+    display: none;
+}
+
+.error {
+    color: darkred;
+}
+
+.success {
+    color: darkgreen;
+}
 
 body {
     margin: 0;

@@ -55,7 +55,7 @@ quill.on('text-change', function (delta, oldDelta, source) {
 
 function sendOp(ops){
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/doc/op/" + docID + "/" + id), true);
+  xhr.open("POST", ("http://azaft.xyz/doc/op/" + docID + "/" + id), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
 
   xhr.onload = function(){
@@ -78,7 +78,7 @@ quill.on('selection-change', function(range, oldRange, source) {
   
   console.log(range);
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/doc/presence/" + docID + "/" + id), true);
+  xhr.open("POST", ("http://azaft.xyz/doc/presence/" + docID + "/" + id), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
 
   xhr.send(JSON.stringify(range));
@@ -96,6 +96,14 @@ function imageHandler() {
   }
 }
 
+function showSignup(){
+  let signup = document.getElementById("signup-menu");
+  let login = document.getElementById("login-menu");
+
+  signup.classList.remove("hide-form");
+  login.classList.add("hide-form");
+}
+
 function handleSignup(){
     let username = document.getElementById("username").value;
     let password = document.getElementById("password").value;
@@ -105,10 +113,29 @@ function handleSignup(){
     document.getElementById("email").value = "";
 
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/signup", true);
+    sendUser.open("POST", "/users/signup", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
-        console.log("Signin res: " + this.responseText);
+        let response = JSON.parse(this.responseText);
+        console.log(response);
+        let signupMessage = document.getElementById("signup-message");
+
+        if(response.message){
+          signupMessage.innerHTML = response.message;
+          signupMessage.classList.remove("success");
+          signupMessage.classList.add("error");
+        } else {
+          signupMessage.innerHTML = "";
+          let signup = document.getElementById("signup-menu");
+          let login = document.getElementById("login-menu");
+
+          signup.classList.add("hide-form");
+          login.classList.remove("hide-form");
+
+          let loginMessage = document.getElementById("login-message");
+          loginMessage.innerHTML = "Verification link sent. Verify to login";
+          loginMessage.classList.add("success");
+        }
     };
     sendUser.send(JSON.stringify({
         "name": username,
@@ -121,14 +148,25 @@ function handleSignup(){
 function handleLogin(){
     let email = document.getElementById("email2").value;
     let password = document.getElementById("password2").value;
-    // document.getElementById("email2").value = "";
-    // document.getElementById("password2").value = "";
+    document.getElementById("email2").value = "";
+    document.getElementById("password2").value = "";
 
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/login", true);
+    sendUser.open("POST", "/users/login", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
-        console.log("Login res: " + this.responseText);
+        let response = JSON.parse(this.responseText);
+        console.log(response);
+        let loginMessage = document.getElementById("login-message");
+
+        if(response.message){
+          loginMessage.innerHTML = response.message;
+          loginMessage.classList.remove("success");
+          loginMessage.classList.add("error");
+        } else {
+          loginMessage.innerHTML = "Login success";
+          loginMessage.classList.add("success");
+        }
     };
 
     sendUser.send(JSON.stringify({
@@ -139,7 +177,7 @@ function handleLogin(){
 
 function handleLogout(){
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/logout", true);
+    sendUser.open("POST", "http://azaft.xyz/users/logout", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
         console.log("Signin res: " + this.responseText);
@@ -153,7 +191,7 @@ function createDoc(){
   console.log(docName);
 
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/collection/create"), true);
+  xhr.open("POST", ("http://azaft.xyz/collection/create"), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
 
   xhr.send(JSON.stringify({
@@ -166,7 +204,7 @@ function deleteDoc(){
   console.log(docID);
 
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/collection/delete"), true);
+  xhr.open("POST", ("http://azaft.xyz/collection/delete"), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
 
   xhr.send(JSON.stringify({
@@ -190,7 +228,7 @@ function connectDoc(){
   }
 
   const uID = Date.now();
-  const evtSource = new EventSource("http://attemptfarmer.cse356.compas.cs.stonybrook.edu/doc/connect/" + docID + "/" + uID);
+  const evtSource = new EventSource("http://azaft.xyz/doc/connect/" + docID + "/" + uID);
   id = uID;
 
   evtSource.onmessage = function(event) {

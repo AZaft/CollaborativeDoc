@@ -7,22 +7,11 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
 
-//Redis
-const redis = require('redis');
-const redis_client = redis.createClient({
-    host: '127.0.0.1',
-    port: '6379',
-});
 
-(async () => {
-  await redis_client.connect();
-})();
-
-//elastic search
 //elastic search
 const { Client } = require('@elastic/elasticsearch')
 const client = new Client({
-  node: 'http://209.94.59.29:9200'
+  node: 'http://127.0.0.1:9200'
 })
 
 
@@ -148,7 +137,12 @@ async function addIndex(docID, ops){
         }
     }
 
-    let name = await redis_client.get(docID);
+    let name = "Untitled";
+    const names = db.collection('names');
+    names.findOne({id: docID})
+    .then(result => {
+        name = result.name;
+    })
 
     await client.index({
         index: 'docs',

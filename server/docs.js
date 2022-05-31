@@ -6,32 +6,21 @@ const app = express();
 const path = require('path');
 const cookieParser = require('cookie-parser');
 
+//sharedb
+const ShareDB = require('sharedb');
+const richText = require('rich-text');
+ShareDB.types.register(require('rich-text').type);
+const share_db = require('sharedb-mongo')('mongodb://localhost:27017/CollaborativeDoc', {mongoOptions: {}});
+let shareDbServer = new ShareDB({db: share_db});
+const connection = shareDbServer.connect();
+
 app.use(cors());
 app.use(bodyParser.json({limit: '10mb'}));
 app.use(bodyParser.urlencoded({limit: '10mb', extended: false}));
 app.use(cookieParser());
 
-const PORT = 4000;
+const PORT = process.env.PORT;
 
-
-const redis = require('redis');
-const redis_client = redis.createClient({
-    host: '127.0.0.1',
-    port: '6379',
-});
-
-(async () => {
-  await redis_client.connect();
-})();
-
-
-
-//sharedb
-var WebSocket = require('ws');
-const sharedb = require('sharedb/lib/client');
-const richText = require('rich-text');
-sharedb.types.register(richText.type);
-let doc;
 let doc_versions = {};
 
 //quill
@@ -58,10 +47,6 @@ MongoClient.connect(url, {
 app.listen(PORT, () => {
   console.log(`Events service listening at http://localhost:${PORT}`)
 })
-
-// Open WebSocket connection to ShareDB server
-const socket = new WebSocket('ws://localhost:8080');
-const connection = new sharedb.Connection(socket);
 
 let currentClientID = 0;
 let clients = {};
@@ -109,6 +94,10 @@ function eventsHandler(request, response, next) {
         response.write(data);
     } else {
 
+        if(!doc_versions[docID]){
+            doc_versions[docID] = 1;
+        }
+
         sendData = {
             content: doc.data.ops, 
             version: doc_versions[docID]
@@ -142,15 +131,20 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
     currentClientID = req.params.uid;
     currentDocID = req.params.docid;
     client_version = req.body.version;
+
+    if(!doc_versions[currentDocID]){
+        doc_versions[currentDocID] = 1;
+    }
+
     server_version = doc_versions[currentDocID];
     op = req.body.op;
 
     //console.log(currentClientID);
     //console.log(req.body);
 
-    doc = connection.get('docs', currentDocID);
+    const doc = connection.get('docs', currentDocID);
     doc.fetch(function (err) {
-        if (err) throw console.log("sharedb error");
+        if (err) console.log("sharedb error");
 
         if(doc.type === null){
             return res.send({
@@ -162,9 +156,11 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
 
     //console.log("client: " + client_version);
     //console.log("server: " + server_version);
-
     if(server_version === client_version){
         //submit ops to sharedb
+        if(doc.type == null){
+            return res.send({status: 'retry'});
+        }
         doc.submitOp(op, sendOps(currentDocID, op));
         
         
@@ -173,9 +169,13 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
     } else {
         return res.send({status: 'retry'});
     }
+
+    //console.log("client: " + client_version);
+    //console.log("server: " + server_version);
+
 });
 
-function sendOps(docID, op, version){
+function sendOps(docID, op){
     doc_versions[docID]++;
 
     for(let i = 0; i < clients[docID].length;i++){
@@ -241,7 +241,7 @@ app.get('/doc/get/:docid/:uid', (req, res) => {
 
     const doc = connection.get('docs', req.params.docid);
     doc.fetch(function (err) {
-        if (err) throw console.log("sharedb error");
+        if (err) console.log("sharedb error");
     });
 
     if(doc.type === null){
@@ -272,45 +272,28 @@ app.post('/collection/create', (req, res) => {
     let docName = req.body.name;
     
 
-    const docID = Date.now();
-    //console.log("CREATING: " + docName + docID);
-
-    const doc = connection.get('docs', docID.toString());
+    const docID = ObjectID().toString();
+    
+    const doc = connection.get('docs', docID);
     doc.fetch(function (err) {
-        if (err) throw console.log("sharedb error");
+        if (err) console.log("sharedb error");
         if (doc.type === null) {
             doc.create([], 'rich-text');
             return;
         }
     });
 
-    redis_client.set(docID, docName);
-    doc_versions[docID] = 1;
+    const names = db.collection('names');
+    names.insertOne({
+        name: docName,
+        id: docID
+    });
+    
 
     res.send({
         docid: `${docID}`
     })
 });
-
-
-// function createNamePair(docID, docName){
-//     const names = db.collection('docNames');
-//     let pair = {
-//         name: docName,
-//         id: docID
-//     }
-//     names.insertOne(pair)
-//     .then(result => {
-//         console.log(result);
-//     })
-//     .catch(err => {
-//         console.log(err);
-//         res.send({
-//             error: true,
-//             message: "Creation Failed"
-//         })
-//     });
-// }
 
 app.post('/collection/delete', (req, res) => {
     if(req.cookies.username ===  undefined){
@@ -325,7 +308,7 @@ app.post('/collection/delete', (req, res) => {
 
     const doc = connection.get('docs', docID);
     doc.fetch(function (err) {
-        if (err) throw console.log("sharedb error");
+        if (err) console.log("sharedb error");
     });
 
     doc.destroy();
@@ -376,10 +359,18 @@ app.get("/collection/list", (req, res) => {
         // console.log("10 RECENT: ");
         // console.log(result);
 
+
         let docpairs = []
         for(let i = 0; i < result.length;i++){
             let id = result[i]._id;
-            let name = await redis_client.get(result[i]._id);
+            
+            let name = "Untitled";
+            const names = db.collection('names');
+            names.findOne({id: id})
+            .then(result => {
+                name = result.name;
+            })
+
             docpairs.push({id, name});
         }
         res.send(docpairs);

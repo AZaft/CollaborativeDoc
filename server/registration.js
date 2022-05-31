@@ -60,14 +60,21 @@ app.post('/users/signup', (req, res) => {
         disabled: true
     }
 
+    if(!user.name || !user.password || !user.email){
+        res.send({
+            error: true,
+            message: "Invalid Credentials"
+        })
+    }
+
     users.insertOne(user)
     .then(result => {
-        let verifyLink = "http://attemptfarmer.cse356.compas.cs.stonybrook.edu/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
+        let verifyLink = "http://azaft.xyz/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
         //console.log(verifyLink);
 
         transporter.sendMail({
             to: user.email,
-            from: '"CollaborativeDoc" <root@ubuntu-1cpu-1gb-us-nyc1>', // Make sure you don't forget the < > brackets
+            from: '"CollaborativeDoc" <root@ubuntu-s-2vcpu-4gb-nyc1-01>', // Make sure you don't forget the < > brackets
             subject: "Verify Account",
             text: verifyLink
         })

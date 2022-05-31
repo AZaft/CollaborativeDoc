@@ -6,57 +6,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>Collaborative Doc</title>
-
+  <link href="/styles.css" rel="stylesheet">  
 </head>
 
 <body>
 
-    <div id="menu">
-        <div id="signup">
-            <label> Username</label>
-            <input id="username"> 
-            <label> Password</label>
-            <input id="password"> 
-            <label> Email</label>
-            <input id="email"> 
-            <input onclick="handleSignup()" type="submit" value="Sign Up">
-        </div>
+    <h1> Collaborative Doc</h1>
+    <h4> Login or Create an Account to Continue</h4>
 
-        <div id="login">
-            <label> Email</label> 
-            <input id="email2">
-            <label> Password</label>
-            <input id="password2"> 
-            <input onclick="handleLogin()" type="submit" value="Login">
-        </div>
+    <div id="login-menu">
+            <label> Email</label> <br>
+            <input id="email2"><br>
+            <label> Password</label><br>
+            <input id="password2"> <br> 
+            <div id="login-message">  </div><br> 
+            <input onclick="handleLogin()" type="submit" value="Login"> <br>
 
-        <input onclick="handleLogout()" type="submit" value="Logout">
-
-
-        <input type="button" onclick="location.href='editor.html';" value="Create New Doc" />
-
-        <div id="open-doc">
-            <input id="doc-id-open"> 
-            <input onclick="openDoc()" type="submit" value="Open">
-        </div>
-
-
-        <div id="create-doc">
-            <input id="doc-name"> 
-            <input onclick="createDoc()" type="submit" value="Create">
-        </div>
-
-        <div id="delete-doc">
-            <input id="doc-id"> 
-            <input onclick="deleteDoc()" type="submit" value="Delete">
-        </div>
-
+        <a href="javascript:showSignup();" id= "create-account"> Don't have an account? Click this</a>
     </div>
 
-    <ul>
-        List of Docs
-        <li><a href=""></a></li>
-    </ul>
+    <div id="signup-menu" class="hide-form">
+            <label> Username</label><br>
+            <input id="username"> <br>
+            <label> Password</label><br>
+            <input id="password"> <br>
+            <label> Email</label><br>
+            <input id="email"> <br>
+            <div id="signup-message">  </div><br>
+            <input onclick="handleSignup()" type="submit" value="Sign Up"><br>
+    </div>
     
     <script src="index.js"></script>
 </body>
