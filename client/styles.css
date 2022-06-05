@@ -19,6 +19,38 @@
     color: darkgreen;
 }
 
+
+.doc-button {
+    float: right;
+    margin-left: 1%;
+}
+
+#recent-docs, #search-results {
+    margin: 1rem;
+}
+
+.doc {
+    outline: 1px solid black;
+    padding: 1vh;
+    width: 30rem;
+    border-radius: 5px;
+    text-align: left;
+    margin: auto;
+    margin-bottom: 0.5rem;
+}
+
+#delete-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  
+    background-color: gray;
+    outline: 1px solid black;
+    border-radius: 5px;
+    padding: 1rem;
+}
+
 body {
     margin: 0;
     text-align: center;

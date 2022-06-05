@@ -6,12 +6,13 @@ const app = express();
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
+require('dotenv').config();
 
 
 //elastic search
 const { Client } = require('@elastic/elasticsearch')
 const client = new Client({
-  node: 'http://127.0.0.1:9200'
+  node: process.env.ELASTICSEARCH_URL
 })
 
 
@@ -24,7 +25,7 @@ const PORT = 4003;
 
 //mongodb
 const MongoClient = require('mongodb').MongoClient;
-const url = 'mongodb://127.0.0.1:27017';
+const url = process.env.MONGO_URL;
 const ObjectID = require('mongodb').ObjectID;
 
 let db;
@@ -44,13 +45,12 @@ app.listen(PORT, () => {
 })
 
 app.get("/index/suggest", async (req, res) => { 
-    
-    // if(req.cookies.username ===  undefined){
-    //     return res.send({
-    //         error: true,
-    //         message: "Not logged in!"
-    //     });
-    // }
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
     
     const result = await client.search({
         index: 'docs',
@@ -78,13 +78,12 @@ app.get("/index/suggest", async (req, res) => {
 })
 
 app.get("/index/search",  async (req, res) => { 
-    
-    // if(req.cookies.username ===  undefined){
-    //     return res.send({
-    //         error: true,
-    //         message: "Not logged in!"
-    //     });
-    // }
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
     
     console.log(req.query.q)
 
@@ -92,10 +91,8 @@ app.get("/index/search",  async (req, res) => {
         index: 'docs',
         size: 10,
         query : {
-            match_phrase: {
-                content: {
-                    query: req.query.q
-                }
+            query_string: {
+                query: req.query.q
             }
         },
         highlight:{
@@ -113,10 +110,14 @@ app.get("/index/search",  async (req, res) => {
     for(let i = 0; i < numHits;i++){
         let hit = result.hits.hits[i];
         if(hit){
+            let snippet = hit.highlight;
+            if(snippet) snippet = snippet.content.join(" ");
             docs.push({
                 docid: hit._id,
                 name: hit._source.title,
-                snippet: hit.highlight.content[0]
+                snippet: snippet,
+                created: hit._source.created,
+                author: hit._source.author
             });
         }   
     }
@@ -137,23 +138,25 @@ async function addIndex(docID, ops){
         }
     }
 
-    let name = "Untitled";
-    const names = db.collection('names');
-    names.findOne({id: docID})
-    .then(result => {
-        name = result.name;
-    })
 
+    const names = db.collection('names');
+    const r = await names.findOne({id: docID});
+    let name = r.name;
+    let user = r.user;
+    let date = r._id.getTimestamp();
+
+   
     await client.index({
         index: 'docs',
         id: docID,
         document: {
             title: name,
-            content: text
+            author: user,
+            content: text,
+            created: date
         }
     });
 }
-
 
 cron.schedule('*/10 * * * * * *', () => {
     db.collection('docs').find().toArray( async function(err, result) {

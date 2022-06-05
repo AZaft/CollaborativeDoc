@@ -1,100 +1,11 @@
-var Quill = require('quill');
-var QuillCursors = require('quill-cursors');
-Quill.register('modules/cursors', QuillCursors);
-var tinycolor = require('tinycolor2');
 
-
-let id;
-let docID = window.location.href.substring(window.location.href.lastIndexOf('/') + 1);
-let documentID = false;
-let version;
-let colors = [];
-let ack = false;
-
-var toolbarOptions = [
-  ['bold', 'italic', 'underline', 'strike'],        // toggled buttons
-  ['blockquote', 'code-block'],
-
-  [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-  [{ 'script': 'sub'}, { 'script': 'super' }],      // superscript/subscript
-  [{ 'indent': '-1'}, { 'indent': '+1' }],          // outdent/indent
-  [{ 'direction': 'rtl' }],                         // text direction
-
-  [ 'link', 'image', 'formula' ],                   // Image
-  [{ 'header': [1, 2, 3, 4, 5, 6, false] }],        // custom dropdown
-
-  [{ 'color': [] }, { 'background': [] }],          // dropdown with defaults from theme
-  [{ 'font': [] }],
-  [{ 'align': [] }],
-
-  ['clean']                                         // remove formatting button
-];
-
-var quill = new Quill('#editor', {
-    modules: {
-        toolbar: toolbarOptions,
-        cursors: true
-    },
-
-    theme: 'snow'
-});
-var cursors = quill.getModule('cursors');
-
-connectDoc();
-
-quill.on('text-change', function (delta, oldDelta, source) {
-        if (source !== 'user') return;
-
-        //array of ops for future buffering
-        console.log(delta.ops);
-
-        
-        sendOp(delta.ops);
-        ack = false;
-});
-
-function sendOp(ops){
-  var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://azaft.xyz/doc/op/" + docID + "/" + id), true);
-  xhr.setRequestHeader('Content-Type', 'application/json');
-
-  xhr.onload = function(){
-    if(this.responseText == "{status: 'retry'}"){
-      console.log("retrying");
-      sendOp(ops);
-    }
-  };
-
-  xhr.send(JSON.stringify({
-    version: version,
-    op: ops
-  }));
-}
-
-quill.on('selection-change', function(range, oldRange, source) {
-  if (source !== 'user') return;
-  
-  if (!range) return;
-  
-  console.log(range);
-  var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://azaft.xyz/doc/presence/" + docID + "/" + id), true);
-  xhr.setRequestHeader('Content-Type', 'application/json');
-
-  xhr.send(JSON.stringify(range));
-});
-
-
-var toolbar = quill.getModule('toolbar');
-toolbar.addHandler('image', imageHandler);
-
-function imageHandler() {
-  var value = prompt('please copy paste the image url here.');
-  if(value){
-    var range = this.quill.getSelection();
-    this.quill.insertEmbed(range.index, 'image', value, Quill.sources.USER);
+document.addEventListener("DOMContentLoaded", () => {
+  if(localStorage.getItem("user") != null){
+    document.getElementById("registration").classList.add("hide-form");
+    document.getElementById("main-app").classList.remove("hide-form");
+    showRecent();
   }
-}
+});
 
 function showSignup(){
   let signup = document.getElementById("signup-menu");
@@ -102,6 +13,14 @@ function showSignup(){
 
   signup.classList.remove("hide-form");
   login.classList.add("hide-form");
+}
+
+function showLogin(){
+  let signup = document.getElementById("signup-menu");
+  let login = document.getElementById("login-menu");
+
+  signup.classList.add("hide-form");
+  login.classList.remove("hide-form");
 }
 
 function handleSignup(){
@@ -126,11 +45,8 @@ function handleSignup(){
           signupMessage.classList.add("error");
         } else {
           signupMessage.innerHTML = "";
-          let signup = document.getElementById("signup-menu");
-          let login = document.getElementById("login-menu");
-
-          signup.classList.add("hide-form");
-          login.classList.remove("hide-form");
+          
+          showLogin();
 
           let loginMessage = document.getElementById("login-message");
           loginMessage.innerHTML = "Verification link sent. Verify to login";
@@ -164,8 +80,10 @@ function handleLogin(){
           loginMessage.classList.remove("success");
           loginMessage.classList.add("error");
         } else {
-          loginMessage.innerHTML = "Login success";
-          loginMessage.classList.add("success");
+          document.getElementById("registration").classList.add("hide-form");
+          document.getElementById("main-app").classList.remove("hide-form");
+          localStorage.setItem("user", response);
+          showRecent();
         }
     };
 
@@ -177,10 +95,13 @@ function handleLogin(){
 
 function handleLogout(){
     var sendUser = new XMLHttpRequest();
-    sendUser.open("POST", "http://azaft.xyz/users/logout", true);
+    sendUser.open("POST", "/users/logout", true);
     sendUser.setRequestHeader('Content-Type', 'application/json');
     sendUser.onload = function(){
         console.log("Signin res: " + this.responseText);
+        localStorage.removeItem("user");
+        document.getElementById("registration").classList.remove("hide-form");
+        document.getElementById("main-app").classList.add("hide-form");
     };
 
     sendUser.send();
@@ -188,80 +109,162 @@ function handleLogout(){
 
 function createDoc(){
   let docName = document.getElementById("doc-name").value;
-  console.log(docName);
-
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://azaft.xyz/collection/create"), true);
+  xhr.open("POST", ("/collection/create"), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
+
+  xhr.onload = function(){
+        let response = JSON.parse(this.responseText);
+        console.log(response);
+        docName.value = "";
+  };
 
   xhr.send(JSON.stringify({
         "name": docName
   }));
 }
 
-function deleteDoc(){
-  let docID = document.getElementById("doc-id").value;
-  console.log(docID);
+function deleteDoc(event){
+  let docID = event.target.parentNode.id;
+  console.log("Deleting" + docID);
 
   var xhr = new XMLHttpRequest();
-  xhr.open("POST", ("http://azaft.xyz/collection/delete"), true);
+  xhr.open("POST", ("/collection/delete"), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
+
+  xhr.onload = function(){
+        let response = JSON.parse(this.responseText);
+        console.log(response);
+        event.target.parentNode.remove();
+  };
 
   xhr.send(JSON.stringify({
         "docid": docID
   }));
 }
 
-function openDoc(){
-  let docID = document.getElementById("doc-id-open").value;
+function getHTML(event){
+  let docID = event.target.parentNode.id;
+  window.location.href = '/doc/get/' + docID + "/" + "default";
+}
+
+function openDoc(event){
+  let docID = event ? event.target.parentNode.id : document.getElementById("doc-id-open").value;
+  
   console.log("Opening: " + docID);
-  localStorage.setItem("documentID", docID);
   window.location.href = '/doc/edit/' + docID;
 }
 
-function connectDoc(){
 
-  if(!docID) docID = localStorage.getItem("documentID");
+function showRecent(){
+  //get request for top 10 most recent docs
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/collection/list", true);
+    xhr.onload = function(){
+        let response = JSON.parse(this.responseText);
+        console.log(response);
+        if(response.length){
+          for(let i = 0;i < response.length;i++){
+            let modifiedDate = new Date(response[i].modified);
+            let time = modifiedDate.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+            let dateString = modifiedDate.getMonth() + 1 + "/" + modifiedDate.getDate() + "/" + modifiedDate.getFullYear() + " " +  time;
+            
+            let element = createDocElement(response[i].name, response[i].id, response[i].user, dateString, "Modified");
+            let recentDocs = document.getElementById("recent-docs");
+            recentDocs.append(element);
+          }    
+        }
+    };
 
-  if(!docID){
-    return;
+    xhr.send(null);
+}
+
+function searchDoc(){
+  let searchInput = document.getElementById("search-input");
+  let query = searchInput.value;
+  console.log(query);
+
+  var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/index/search?q=" + query, true);
+    xhr.onload = function(){
+        let response = JSON.parse(this.responseText);
+        console.log(response);
+        let recentDocs = document.getElementById("search-results");
+        recentDocs.innerHTML = "";
+        if(response.length){
+          for(let i = 0;i < response.length;i++){
+            let createdDate = new Date(response[i].created);
+            let time = createdDate.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+            let dateString = createdDate.getMonth() + 1 + "/" + createdDate.getDate() + "/" + createdDate.getFullYear() + " " +  time;
+            
+            let element = createDocElement(response[i].name, response[i].docid, response[i].author, dateString, response[i].snippet, "Created");
+            
+            recentDocs.append(element);
+          }    
+        }
+
+    };
+
+    xhr.send(null);
+}
+
+function createDocElement(dName, docID, uName, mTime, snippet, dateType){
+  let doc = document.createElement("div");
+  doc.classList.add("doc");
+  doc.setAttribute("id", docID);
+
+  let docName = document.createElement("span");
+  docName.innerHTML = "<span style=\"font-weight:bold\">" +  dName + "</span> <br>";
+
+  let modifiedTime = document.createElement("span");
+  modifiedTime.innerHTML = dateType + ": <span style=\"color:darkgreen;font-weight:bold\">" + mTime +  "</span> <br>";
+
+  let userName = document.createElement("span");
+  userName.innerHTML = "By: <span style=\"color:darkgreen;font-weight:bold\">" + uName + "</span>";
+
+  let openButton = document.createElement("button");
+  openButton.classList.add("doc-button");
+  openButton.innerHTML = "open";
+  openButton.onclick = function() {openDoc(event)};
+
+  let deleteButton = document.createElement("button");
+  deleteButton.classList.add("doc-button");
+  deleteButton.innerHTML = "delete";
+  deleteButton.onclick = function() {showDeleteModal(event)};
+
+  let htmlButton = document.createElement("button");
+  htmlButton.classList.add("doc-button");
+  htmlButton.innerHTML = "HTML";
+  htmlButton.onclick = function() {getHTML(event)};
+
+  let snippetElement;
+  if(snippet){
+    snippetElement = document.createElement("span");
+    snippetElement.innerHTML = "<br>\"" + snippet + "\"";
   }
 
-  const uID = Date.now();
-  const evtSource = new EventSource("http://azaft.xyz/doc/connect/" + docID + "/" + uID);
-  id = uID;
+  doc.append(docName);
+  doc.append(modifiedTime);
+  doc.append(userName);
+  
+  
+  doc.append(htmlButton);
+  doc.append(deleteButton);
+  doc.append(openButton);
 
-  evtSource.onmessage = function(event) {
-    let data = JSON.parse(event.data);
-    console.log(data);
+  if(snippet) doc.append(snippetElement);
 
-    if(data.ack){
-      ack = true;
-      console.log("ACKNOWLEDGED");
-      version++;
-    } else if(data.error){
-      evtSource.close();
-    } else if(data.presence){
-      if(data.presence.cursor){
-        console.log(data.presence);
-        let id = data.presence.id;
-        let index = data.presence.cursor.index;
-        let length = data.presence.cursor.length;
-        let name = data.presence.cursor.name;
-        let range = {index, length};
+  let line = document.createElement("br");
+  doc.append(line);
 
-        colors[id] = colors[id] || tinycolor.random().toHexString();
-        console.log(id + name + colors[id]);
-        cursors.createCursor(id, name, colors[id]);
-        cursors.moveCursor(id, range);
-      }
-    } else {
-      if(data.content) {
-        version = data.version;
-        quill.setContents(data.content);
-      } else {
-        quill.updateContents(data);
-      }
-    }
-  }
+  return doc;
+}
+
+function showDeleteModal(event){
+  let modal = document.getElementById("delete-modal");
+  let children = modal.children;
+  children[0].innerHTML = "Delete " + event.target.parentNode.id + "?";
+  children[1].onclick = function() {modal.classList.add("hide-form"), deleteDoc(event);};
+  children[2].onclick = function() {modal.classList.add("hide-form");};
+  modal.classList.remove("hide-form");
 }

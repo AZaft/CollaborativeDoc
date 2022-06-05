@@ -1,16 +1,16 @@
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
 const path = require('path');
 const cookieParser = require('cookie-parser');
+require('dotenv').config();
 
 //sharedb
 const ShareDB = require('sharedb');
 const richText = require('rich-text');
 ShareDB.types.register(require('rich-text').type);
-const share_db = require('sharedb-mongo')('mongodb://localhost:27017/CollaborativeDoc', {mongoOptions: {}});
+const share_db = require('sharedb-mongo')(process.env.MONGO_URL + '/CollaborativeDoc', {mongoOptions: {}});
 let shareDbServer = new ShareDB({db: share_db});
 const connection = shareDbServer.connect();
 
@@ -28,7 +28,7 @@ const QuillDeltaToHtmlConverter = require('quill-delta-to-html').QuillDeltaToHtm
 
 //mongodb
 const MongoClient = require('mongodb').MongoClient;
-const url = 'mongodb://127.0.0.1:27017';
+const url = process.env.MONGO_URL;
 const ObjectID = require('mongodb').ObjectID;
 
 let db;
@@ -53,6 +53,12 @@ let clients = {};
 
 //connext to client
 function eventsHandler(request, response, next) {
+    if(request.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
 
     const headers = {
         'Content-Type': 'text/event-stream',
@@ -286,7 +292,8 @@ app.post('/collection/create', (req, res) => {
     const names = db.collection('names');
     names.insertOne({
         name: docName,
-        id: docID
+        id: docID,
+        user: req.cookies.username
     });
     
 
@@ -343,13 +350,12 @@ app.post('/collection/delete', (req, res) => {
 });
 
 app.get("/collection/list", (req, res) => { 
-    
-    // if(req.cookies.username ===  undefined){
-    //     return res.send({
-    //         error: true,
-    //         message: "Not logged in!"
-    //     });
-    // }
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
 
     const docs = db.collection('docs');
 
@@ -363,16 +369,17 @@ app.get("/collection/list", (req, res) => {
         let docpairs = []
         for(let i = 0; i < result.length;i++){
             let id = result[i]._id;
+            let modified = result[i]._m.mtime;
             
-            let name = "Untitled";
-            const names = db.collection('names');
-            names.findOne({id: id})
-            .then(result => {
-                name = result.name;
-            })
 
-            docpairs.push({id, name});
+            const names = db.collection('names');
+            const r = await names.findOne({id: id});
+            let name = r.name;
+            let user = r.user;
+            docpairs.push({id, name, modified, user});
+    
         }
-        res.send(docpairs);
+
+        return res.send(docpairs);
     });
 })

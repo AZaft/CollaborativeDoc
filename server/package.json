@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start-server":"PORT=4000 node docs & node registration & node mediaupload & node elasticsearch &"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +17,7 @@
     "cookie-session": "^2.0.0",
     "cors": "^2.8.5",
     "cron": "^1.8.3",
+    "dotenv": "^16.0.1",
     "express": "^4.17.3",
     "file-type": "^10.11.0",
     "mongodb": "^4.5.0",

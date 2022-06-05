@@ -5,12 +5,12 @@ const cors = require('cors');
 const app = express();
 const nodemailer = require("nodemailer");
 const cookieParser = require('cookie-parser');
-
+require('dotenv').config();
 
 
 
 let transporter = nodemailer.createTransport({
-    host: "localhost",
+    host: process.env.POSTFIX_URL,
     port: 25,
     secure: false, 
     tls: {
@@ -29,7 +29,7 @@ const PORT = 4001;
 
 //mongodb
 const MongoClient = require('mongodb').MongoClient;
-const url = 'mongodb://127.0.0.1:27017';
+const url = process.env.MONGO_URL;
 const ObjectID = require('mongodb').ObjectID;
 
 let db;
@@ -69,7 +69,8 @@ app.post('/users/signup', (req, res) => {
 
     users.insertOne(user)
     .then(result => {
-        let verifyLink = "http://azaft.xyz/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
+        
+        let verifyLink = process.env.DOMAIN + "/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
         //console.log(verifyLink);
 
         transporter.sendMail({

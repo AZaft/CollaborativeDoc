@@ -10,8 +10,8 @@
 </head>
 
 <body>
-
-    <h1> Collaborative Doc</h1>
+  <h1> Collaborative Doc</h1>
+  <div id="registration" >
     <h4> Login or Create an Account to Continue</h4>
 
     <div id="login-menu">
@@ -34,8 +34,49 @@
             <input id="email"> <br>
             <div id="signup-message">  </div><br>
             <input onclick="handleSignup()" type="submit" value="Sign Up"><br>
+            <a href="javascript:showLogin();" id= "create-account"> Click here to login </a>
+    </div>
+  </div>
+
+  <div id="main-app" class="hide-form">
+    <input onclick="handleLogout()" type="submit" value="Logout">
+
+
+    <input type="button" onclick="location.href='editor.html';" value="Show Editor" />
+
+
+    <h4> Create a new document </h4>
+    <div id="create-doc">
+        <input id="doc-name" placeholder="Name"> 
+        <input onclick="createDoc()" type="submit" value="Create">
+    </div>
+
+    <div id="open-doc">
+      <input id="doc-id-open" placeholder="Id"> 
+      <input onclick="openDoc()" type="submit" value="Open">
+    </div>
+
+
+    <h4> Recently Modified</h4>
+    <div id="recent-docs">
     </div>
     
+
+    <div id="search-doc">
+      <input id="search-input"> 
+      <input onclick="searchDoc()" type="submit" value="Search">
+    </div>
+
+    <div id="search-results">
+    </div>
+  </div>
+
+  <div id="delete-modal" class="hide-form">
+    <div> asdf</div>
+    <button> yes </button>
+    <button> no </button>
+  </div>
+
     <script src="index.js"></script>
 </body>
 </html>

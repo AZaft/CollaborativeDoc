@@ -46,12 +46,12 @@ app.listen(PORT, () => {
 
 
 app.post('/media/upload',  function (req, res, next) {
-    // if(req.cookies.username ===  undefined){
-    //     return res.send({
-    //         error: true,
-    //         message: "Not logged in!"
-    //     });
-    // }
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
 
     upload(req, res, function (err) {
         if (err) {
@@ -69,12 +69,12 @@ app.post('/media/upload',  function (req, res, next) {
 })
 
 app.get('/media/access/:mediaid',  function (req, res, next) {
-    // if(req.cookies.username ===  undefined){
-    //     return res.send({
-    //         error: true,
-    //         message: "Not logged in!"
-    //     });
-    // }
+    if(req.cookies.username ===  undefined){
+        return res.send({
+            error: true,
+            message: "Not logged in!"
+        });
+    }
     
     res.sendFile("/var/www/CollaborativeDoc/server/media/" + req.params.mediaid);
 })

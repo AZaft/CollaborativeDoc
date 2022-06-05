@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "browserify index.js -o bundle.js"
+    "build": "browserify editor.js -o bundle.js"
   },
   "dependencies": {
     "browserify": "^17.0.0",
