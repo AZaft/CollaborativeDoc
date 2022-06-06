@@ -4,6 +4,14 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("registration").classList.add("hide-form");
     document.getElementById("main-app").classList.remove("hide-form");
     showRecent();
+
+    document.getElementById("search-input")
+    .addEventListener("keyup", function(event) {
+      event.preventDefault();
+      if (event.keyCode === 13) {
+          searchDoc();
+      }
+    });
   }
 });
 
@@ -117,6 +125,7 @@ function createDoc(){
         let response = JSON.parse(this.responseText);
         console.log(response);
         docName.value = "";
+        showRecent();
   };
 
   xhr.send(JSON.stringify({
@@ -164,13 +173,14 @@ function showRecent(){
         let response = JSON.parse(this.responseText);
         console.log(response);
         if(response.length){
+          let recentDocs = document.getElementById("recent-docs");
+          recentDocs.innerHTML = "";
           for(let i = 0;i < response.length;i++){
             let modifiedDate = new Date(response[i].modified);
             let time = modifiedDate.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
             let dateString = modifiedDate.getMonth() + 1 + "/" + modifiedDate.getDate() + "/" + modifiedDate.getFullYear() + " " +  time;
             
-            let element = createDocElement(response[i].name, response[i].id, response[i].user, dateString, "Modified");
-            let recentDocs = document.getElementById("recent-docs");
+            let element = createDocElement(response[i].name, response[i].id, response[i].user, dateString, null,"Modified");
             recentDocs.append(element);
           }    
         }

@@ -1,0 +1,24 @@
+Create index with settings:
+curl -X PUT "localhost:9200/docs?pretty" -H 'Content-Type: application/json' -d'
+{
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "default": {
+          "tokenizer": "whitespace",
+          "filter": [ "lowercase", "stemmer", "stop" ]
+        },
+        "default_search": {
+          "type": "stop"
+        }
+      }
+    }
+  }
+}
+'
+Check index:
+curl -XGET 'localhost:9200/docs/_search?pretty'
+
+delete index:
+curl -X DELETE "localhost:9200/docs?pretty"
+

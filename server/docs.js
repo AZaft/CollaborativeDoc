@@ -54,7 +54,7 @@ let clients = {};
 //connext to client
 function eventsHandler(request, response, next) {
     if(request.cookies.username ===  undefined){
-        return res.send({
+        return response.send({
             error: true,
             message: "Not logged in!"
         });
@@ -165,7 +165,7 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
     if(server_version === client_version){
         //submit ops to sharedb
         if(doc.type == null){
-            return res.send({status: 'retry'});
+            return res.send({status: 'retry', version: server_version});
         }
         doc.submitOp(op, sendOps(currentDocID, op));
         
@@ -173,7 +173,7 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
         return res.send({status: "ok"});
 
     } else {
-        return res.send({status: 'retry'});
+        return res.send({status: 'retry', version: server_version});
     }
 
     //console.log("client: " + client_version);

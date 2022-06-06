@@ -67,15 +67,21 @@ app.post('/users/signup', (req, res) => {
         })
     }
 
-    users.insertOne(user)
+    users.findOneAndUpdate({email: user.email}, {$set: user}, {upsert: true})
     .then(result => {
-        
-        let verifyLink = process.env.DOMAIN + "/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + result.insertedId.toString();
-        //console.log(verifyLink);
+        console.log(result);
+        let key;
+        if(result.value) 
+            key = result.value._id.toString() 
+        else 
+            key = result.lastErrorObject.upserted.toString();
+
+        let verifyLink = process.env.DOMAIN + "/users/verify?user=" + encodeURIComponent(user.email) + "&key=" + key;
+        console.log(verifyLink);
 
         transporter.sendMail({
             to: user.email,
-            from: '"CollaborativeDoc" <root@ubuntu-s-2vcpu-4gb-nyc1-01>', // Make sure you don't forget the < > brackets
+            from: '"CollaborativeDoc" <' + process.env.POSTFIX_SENDER + '>', // Make sure you don't forget the < > brackets
             subject: "Verify Account",
             text: verifyLink
         })
@@ -100,11 +106,7 @@ app.post('/users/login', (req, res) => {
                 error: true,
                 message: "Invalid Login"
             })
-            // console.log("ACTUAL:")
-            // console.log(result);
-            // console.log("GOT:")
-            // console.log(req.body);
-            // console.log("Login Failed");
+        
         } else {
             let name = result.name;
             

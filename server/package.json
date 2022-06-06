@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start-server":"PORT=4000 node docs & node registration & node mediaupload & node elasticsearch &"
+    "start-server":"PORT=4000 node docs & node registration & node mediaupload & node elasticsearch"
   },
   "keywords": [],
   "author": "",

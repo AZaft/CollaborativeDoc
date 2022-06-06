@@ -10,7 +10,8 @@ let docID = window.location.pathname.substring(window.location.pathname.lastInde
 let documentID = false;
 let version;
 let colors = [];
-let ack = false;
+let ack = true;
+let ops_queue = [];
 
 var toolbarOptions = [
   ['bold', 'italic', 'underline', 'strike'],        // toggled buttons
@@ -45,32 +46,21 @@ document.addEventListener("DOMContentLoaded", () => {
   connectDoc();
 });
 
-
-
 quill.on('text-change', function (delta, oldDelta, source) {
-        if (source !== 'user') return;
+    if (source !== 'user') return;
 
-        //array of ops for future buffering
-        console.log(delta.ops);
-
-        
-        sendOp(delta.ops);
-        ack = false;
+    //array of ops for future buffering
+    ops_queue.push(delta.ops);
+    if(ack){
+      ack = false;
+      sendOp(ops_queue[0]);
+    } 
 });
 
 function sendOp(ops){
   var xhr = new XMLHttpRequest();
   xhr.open("POST", ("/doc/op/" + docID + "/" + id), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
-
-  
-  xhr.onload = function(){
-    let response = JSON.parse(this.responseText);
-    if(response.status === "retry"){
-      console.log("retrying");
-      sendOp(ops);
-    } 
-  };
 
   xhr.send(JSON.stringify({
     version: version,
@@ -120,8 +110,11 @@ function connectDoc(){
       ack = true;
       console.log("ACKNOWLEDGED");
       version++;
+      ops_queue.shift();
+
+      if(ops_queue.length) sendOp(ops_queue[0]);
     } else if(data.error){
-      evtSource.close();
+      console.log(data.error);
     } else if(data.presence){
       if(data.presence.cursor){
         console.log(data.presence);
@@ -142,6 +135,7 @@ function connectDoc(){
         quill.setContents(data.content);
       } else {
         quill.updateContents(data);
+        version++;
       }
     }
   }
