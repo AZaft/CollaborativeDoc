@@ -50,19 +50,35 @@ quill.on('text-change', function (delta, oldDelta, source) {
 
     //array of ops for future buffering
     ops_queue.push(delta.ops);
-    if(ack){
-      ack = false;
-      sendOp(ops_queue[0]);
+
+    if(!ops_queue[1]){
+      sendOp(ops_queue[0], version);
     } 
 });
 
-function sendOp(ops){
+function sendOp(ops, clientVersion){
+  if(ops_queue.length > 1){
+    console.log(ops_queue);
+  }
+
+
   var xhr = new XMLHttpRequest();
   xhr.open("POST", ("/doc/op/" + docID + "/" + id), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
 
+  xhr.onload = function(){
+    let response = JSON.parse(this.responseText);
+    if(response.status === "retry"){
+      let serverVersion = response.version;
+      console.log("retrying");
+      console.log("client version:" + clientVersion);
+      console.log(response);
+      sendOp(ops, ++clientVersion);
+    }
+  };
+
   xhr.send(JSON.stringify({
-    version: version,
+    version: clientVersion,
     op: ops
   }));
 }
@@ -111,7 +127,7 @@ function connectDoc(){
       version++;
       ops_queue.shift();
 
-      if(ops_queue.length) sendOp(ops_queue[0]);
+      if(ops_queue.length) sendOp(ops_queue[0], version);
     } else if(data.error){
       console.log(data.error);
     } else if(data.presence){
@@ -128,6 +144,9 @@ function connectDoc(){
         cursors.createCursor(id, name, colors[id]);
         cursors.moveCursor(id, range);
       }
+    } else if(data.loggedOut){
+      evtSource.close();
+      window.location.href = '/';
     } else {
       if(data.content) {
         version = data.version;

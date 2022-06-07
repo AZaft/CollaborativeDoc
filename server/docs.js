@@ -53,13 +53,6 @@ let clients = {};
 
 //connext to client
 function eventsHandler(request, response, next) {
-    if(request.cookies.username ===  undefined){
-        return response.send({
-            error: true,
-            message: "Not logged in!"
-        });
-    }
-
     const headers = {
         'Content-Type': 'text/event-stream',
         'Connection': 'keep-alive',
@@ -67,6 +60,11 @@ function eventsHandler(request, response, next) {
         'Cache-Control': 'no-cache'
     };
     response.writeHead(200, headers);
+
+    if(request.cookies.username ===  undefined){
+        response.write(`data: ${JSON.stringify({loggedOut: true})}\n\n`);
+        return response.end();
+    }
 
     const clientId = request.params.uid;
     const docID = request.params.docid;
@@ -88,31 +86,29 @@ function eventsHandler(request, response, next) {
     const doc = connection.get('docs', docID);
     doc.fetch(function (err) {
         if (err) throw console.log("sharedb error");
-    });
+        let sendData;
+        if (doc.type === null) {
+            sendData = {
+                error: true,
+                message: "Connection failed: doc does not exist"
+            };
+            const data = `data: ${JSON.stringify(sendData)}\n\n`;
+            response.write(data);
+        } else {
 
-    let sendData;
-    if (doc.type === null) {
-        sendData = {
-            error: true,
-            message: "Connection failed: doc does not exist"
-        };
-        const data = `data: ${JSON.stringify(sendData)}\n\n`;
-        response.write(data);
-    } else {
+            if(!doc_versions[docID]){
+                doc_versions[docID] = 1;
+            }
 
-        if(!doc_versions[docID]){
-            doc_versions[docID] = 1;
+            sendData = {
+                content: doc.data.ops, 
+                version: doc_versions[docID]
+            };
+
+            const data = `data: ${JSON.stringify(sendData)}\n\n`;
+            response.write(data);
         }
-
-        sendData = {
-            content: doc.data.ops, 
-            version: doc_versions[docID]
-        };
-
-        const data = `data: ${JSON.stringify(sendData)}\n\n`;
-        response.write(data);
-    }
-
+    });
 
     //console.log(clients);
 
@@ -125,18 +121,24 @@ function eventsHandler(request, response, next) {
 app.get('/doc/connect/:docid/:uid', eventsHandler);
 
 app.post('/doc/op/:docid/:uid', (req, res) => {
+    //console.log("LOGGED IN: " + req.cookies.username);
+    currentClientID = req.params.uid;
+    currentDocID = req.params.docid;
+    client_version = req.body.version;
+
     if(req.cookies.username ===  undefined){
+        for(let i = 0; i < clients[currentDocID].length;i++){
+            let client = clients[currentDocID][i];
+            if(client.id !== currentClientID){
+                client.response.write(`data: ${JSON.stringify({loggedOut: true})}\n\n`);
+            }
+        }
+        
         return res.send({
             error: true,
             message: "Not logged in!"
         });
     }
-
-    //console.log("LOGGED IN: " + req.cookies.username);
-
-    currentClientID = req.params.uid;
-    currentDocID = req.params.docid;
-    client_version = req.body.version;
 
     if(!doc_versions[currentDocID]){
         doc_versions[currentDocID] = 1;
@@ -158,37 +160,30 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
                 message: "Doc does not exist for op submission"
             });
         }
-    });
 
-    //console.log("client: " + client_version);
-    //console.log("server: " + server_version);
-    if(server_version === client_version){
-        //submit ops to sharedb
-        if(doc.type == null){
+        //console.log("client: " + client_version);
+        //console.log("server: " + server_version);
+        if(server_version === client_version){
+            //submit ops to sharedb
+            doc.submitOp(op, sendOps(currentDocID, op));
+            
+            
+            return res.send({status: "ok"});
+        } else {
             return res.send({status: 'retry', version: server_version});
         }
-        doc.submitOp(op, sendOps(currentDocID, op));
-        
-        
-        return res.send({status: "ok"});
-
-    } else {
-        return res.send({status: 'retry', version: server_version});
-    }
-
-    //console.log("client: " + client_version);
-    //console.log("server: " + server_version);
-
+    });
 });
 
 function sendOps(docID, op){
     doc_versions[docID]++;
 
     for(let i = 0; i < clients[docID].length;i++){
-        if(clients[docID][i].id !== currentClientID){
-            clients[docID][i].response.write(`data: ${JSON.stringify(op)}\n\n`)
+        let client = clients[docID][i];
+        if(client.id !== currentClientID){
+            client.response.write(`data: ${JSON.stringify(op)}\n\n`)
         } else {
-            clients[docID][i].response.write(`data: ${JSON.stringify({ack: op})}\n\n`)
+            client.response.write(`data: ${JSON.stringify({ack: op})}\n\n`)
         }
     }
 }
@@ -248,21 +243,19 @@ app.get('/doc/get/:docid/:uid', (req, res) => {
     const doc = connection.get('docs', req.params.docid);
     doc.fetch(function (err) {
         if (err) console.log("sharedb error");
+        if(doc.type === null){
+            return res.send({
+                    error: true,
+                    message: "Doc does not for GET"
+            });
+        }
+        let cfg = {};
+        let converter = new QuillDeltaToHtmlConverter(doc.data.ops, cfg);
+
+        let html = converter.convert();
+
+        res.send(html);
     });
-
-    if(doc.type === null){
-        return res.send({
-                error: true,
-                message: "Doc does not for GET"
-        });
-    }
-
-    let cfg = {};
-    let converter = new QuillDeltaToHtmlConverter(doc.data.ops, cfg);
-
-    let html = converter.convert();
-
-    res.send(html);
 });
 
 
@@ -316,9 +309,8 @@ app.post('/collection/delete', (req, res) => {
     const doc = connection.get('docs', docID);
     doc.fetch(function (err) {
         if (err) console.log("sharedb error");
+        doc.destroy();
     });
-
-    doc.destroy();
 
     const docs = db.collection('docs');
     docs.deleteMany({ _id : docID })

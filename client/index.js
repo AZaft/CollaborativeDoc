@@ -125,7 +125,9 @@ function createDoc(){
         let response = JSON.parse(this.responseText);
         console.log(response);
         docName.value = "";
-        showRecent();
+        setTimeout(function(){
+          showRecent();
+        }, 100);
   };
 
   xhr.send(JSON.stringify({
@@ -145,6 +147,7 @@ function deleteDoc(event){
         let response = JSON.parse(this.responseText);
         console.log(response);
         event.target.parentNode.remove();
+        showRecent();
   };
 
   xhr.send(JSON.stringify({
@@ -172,6 +175,7 @@ function showRecent(){
     xhr.onload = function(){
         let response = JSON.parse(this.responseText);
         console.log(response);
+        if(response.error) handleLogout();
         if(response.length){
           let recentDocs = document.getElementById("recent-docs");
           recentDocs.innerHTML = "";
