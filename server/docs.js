@@ -121,24 +121,17 @@ function eventsHandler(request, response, next) {
 app.get('/doc/connect/:docid/:uid', eventsHandler);
 
 app.post('/doc/op/:docid/:uid', (req, res) => {
-    //console.log("LOGGED IN: " + req.cookies.username);
-    currentClientID = req.params.uid;
-    currentDocID = req.params.docid;
-    client_version = req.body.version;
-
     if(req.cookies.username ===  undefined){
-        for(let i = 0; i < clients[currentDocID].length;i++){
-            let client = clients[currentDocID][i];
-            if(client.id !== currentClientID){
-                client.response.write(`data: ${JSON.stringify({loggedOut: true})}\n\n`);
-            }
-        }
-        
         return res.send({
             error: true,
             message: "Not logged in!"
         });
     }
+
+    //console.log("LOGGED IN: " + req.cookies.username);
+    currentClientID = req.params.uid;
+    currentDocID = req.params.docid;
+    client_version = req.body.version;
 
     if(!doc_versions[currentDocID]){
         doc_versions[currentDocID] = 1;

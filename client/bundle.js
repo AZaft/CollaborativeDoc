@@ -32,6 +32,7 @@ var toolbarOptions = [
   ['clean']                                         // remove formatting button
 ];
 
+
 var quill = new Quill('#editor', {
     modules: {
         toolbar: toolbarOptions,
@@ -43,6 +44,11 @@ var quill = new Quill('#editor', {
 var cursors = quill.getModule('cursors');
 
 document.addEventListener("DOMContentLoaded", () => {
+  let toolbar = document.getElementsByClassName("ql-toolbar");
+  let button = document.createElement("button");
+  button.innerHTML = "<i class=\"fa fa-home\"> Home </i>";
+  button.onclick = function() {location.href='/';};
+  toolbar[0].append(button);
   connectDoc();
 });
 
@@ -75,6 +81,8 @@ function sendOp(ops, clientVersion){
       console.log("client version:" + clientVersion);
       console.log(response);
       sendOp(ops, ++clientVersion);
+    } else if(response.error) {
+      window.location.href = '/';
     }
   };
 

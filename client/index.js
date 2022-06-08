@@ -88,10 +88,8 @@ function handleLogin(){
           loginMessage.classList.remove("success");
           loginMessage.classList.add("error");
         } else {
-          document.getElementById("registration").classList.add("hide-form");
-          document.getElementById("main-app").classList.remove("hide-form");
-          localStorage.setItem("user", response);
-          showRecent();
+          localStorage.setItem("user", response.name);
+          location.reload();
         }
     };
 
@@ -214,9 +212,10 @@ function searchDoc(){
             let element = createDocElement(response[i].name, response[i].docid, response[i].author, dateString, response[i].snippet, "Created");
             
             recentDocs.append(element);
-          }    
-        }
-
+          } 
+        }else {
+          recentDocs.innerHTML = "No matching results found";
+        }    
     };
 
     xhr.send(null);

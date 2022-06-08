@@ -51,6 +51,10 @@
     padding: 1rem;
 }
 
+.fa-home {
+    width: 49px;
+}
+
 body {
     margin: 0;
     text-align: center;
