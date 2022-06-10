@@ -1,5 +1,6 @@
 var Quill = require('quill');
 var QuillCursors = require('quill-cursors');
+var Delta = require('quill-delta');
 Quill.register('modules/cursors', QuillCursors);
 var tinycolor = require('tinycolor2');
 
@@ -55,19 +56,16 @@ quill.on('text-change', function (delta, oldDelta, source) {
     if (source !== 'user') return;
 
     //array of ops for future buffering
-    ops_queue.push(delta.ops);
+    ops_queue.push(delta);
+    let numOps = ops_queue.length;
 
-    if(!ops_queue[1]){
-      sendOp(ops_queue[0], version);
-    } 
+    if(ack){
+      sendOp(ops_queue[0].ops);
+    }
 });
 
-function sendOp(ops, clientVersion){
-  if(ops_queue.length > 1){
-    console.log(ops_queue);
-  }
-
-
+function sendOp(ops){
+  ack = false;
   var xhr = new XMLHttpRequest();
   xhr.open("POST", ("/doc/op/" + docID + "/" + id), true);
   xhr.setRequestHeader('Content-Type', 'application/json');
@@ -75,18 +73,15 @@ function sendOp(ops, clientVersion){
   xhr.onload = function(){
     let response = JSON.parse(this.responseText);
     if(response.status === "retry"){
-      let serverVersion = response.version;
-      console.log("retrying");
-      console.log("client version:" + clientVersion);
-      console.log(response);
-      sendOp(ops, ++clientVersion);
+      console.log("Retrying, client: " + version + ", server: " + response.version);
+      sendOp(ops, version); 
     } else if(response.error) {
       window.location.href = '/';
     }
   };
 
   xhr.send(JSON.stringify({
-    version: clientVersion,
+    version: version,
     op: ops
   }));
 }
@@ -131,13 +126,15 @@ function connectDoc(){
 
     if(data.ack){
       ack = true;
-      console.log("ACKNOWLEDGED");
       version++;
       ops_queue.shift();
 
-      if(ops_queue.length) sendOp(ops_queue[0], version);
+      if(ops_queue.length > 0) {
+        sendOp(ops_queue[0].ops);
+      }
     } else if(data.error){
       console.log(data.error);
+      window.location.href = '/';
     } else if(data.presence){
       if(data.presence.cursor){
         console.log(data.presence);
@@ -160,9 +157,22 @@ function connectDoc(){
         version = data.version;
         quill.setContents(data.content);
       } else {
-        quill.updateContents(data);
+        let serverData = new Delta(data);
         version++;
+        applyTransformations(serverData);
+
+        quill.updateContents(serverData);
       }
     }
+  }
+}
+
+function applyTransformations(serverData) {
+  for(let i = 0; i < ops_queue.length;i++){
+    ops_queue[i].transform(serverData, false);
+  }
+
+  for(let i = 0; i < ops_queue.length;i++){
+    serverData.transform(ops_queue[i], true);
   }
 }

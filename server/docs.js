@@ -48,7 +48,6 @@ app.listen(PORT, () => {
   console.log(`Events service listening at http://localhost:${PORT}`)
 })
 
-let currentClientID = 0;
 let clients = {};
 
 //connext to client
@@ -129,16 +128,16 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
     }
 
     //console.log("LOGGED IN: " + req.cookies.username);
-    currentClientID = req.params.uid;
-    currentDocID = req.params.docid;
-    client_version = req.body.version;
+    let currentClientID = req.params.uid;
+    let currentDocID = req.params.docid;
+    let client_version = req.body.version;
 
     if(!doc_versions[currentDocID]){
         doc_versions[currentDocID] = 1;
     }
 
-    server_version = doc_versions[currentDocID];
-    op = req.body.op;
+    let server_version = doc_versions[currentDocID];
+    let op = req.body.op;
 
     //console.log(currentClientID);
     //console.log(req.body);
@@ -158,7 +157,7 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
         //console.log("server: " + server_version);
         if(server_version === client_version){
             //submit ops to sharedb
-            doc.submitOp(op, sendOps(currentDocID, op));
+            doc.submitOp(op, sendOps(currentDocID, op, currentClientID));
             
             
             return res.send({status: "ok"});
@@ -168,7 +167,7 @@ app.post('/doc/op/:docid/:uid', (req, res) => {
     });
 });
 
-function sendOps(docID, op){
+function sendOps(docID, op, currentClientID){
     doc_versions[docID]++;
 
     for(let i = 0; i < clients[docID].length;i++){
@@ -189,8 +188,8 @@ app.post('/doc/presence/:docid/:uid', (req, res) => {
         });
     }
 
-    currentClientID = req.params.uid;
-    currentDocID = req.params.docid;
+    let currentClientID = req.params.uid;
+    let currentDocID = req.params.docid;
     
     // console.log(currentClientID);
     // console.log(req.body);
@@ -217,7 +216,6 @@ app.post('/doc/presence/:docid/:uid', (req, res) => {
                     cursor: null
                 }};
             }
-            //let data = {presence: sendData}
             //console.log(sendData);
             clients[currentDocID][i].response.write(`data: ${JSON.stringify(sendData)}\n\n`);
         }
